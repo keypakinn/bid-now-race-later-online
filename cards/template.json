@@ -1,0 +1,111 @@
+{
+  "templateVersion": 1,
+  "base": {
+    "w": 600,
+    "h": 900
+  },
+  "fonts": [
+    "https://fonts.googleapis.com/css2?family=Kanit:ital,wght@1,700&family=Orbitron:wght@900&display=swap"
+  ],
+  "frame": "frame.png",
+  "back": "back.png",
+  "art": {
+    "x": 28,
+    "y": 126,
+    "w": 544,
+    "h": 456,
+    "radius": 14
+  },
+  "fallback": {
+    "bg": "#1A1C20",
+    "color": "#F2EFE8",
+    "column": "name"
+  },
+  "thumb": {
+    "hide": []
+  },
+  "slots": [
+    {
+      "id": "name",
+      "type": "text",
+      "column": "name",
+      "x": 30,
+      "y": 4,
+      "w": 420,
+      "h": 98,
+      "font": {
+        "family": "Kanit",
+        "weight": 700,
+        "italic": true,
+        "size": 52,
+        "min": 28
+      },
+      "color": "#101114",
+      "align": "left",
+      "valign": "middle",
+      "fit": "shrink"
+    },
+    {
+      "id": "leds",
+      "type": "pips",
+      "column": "power",
+      "max": 50,
+      "count": 10,
+      "round": "floor",
+      "x": 174,
+      "y": 610,
+      "size": 18,
+      "gap": 8,
+      "on": [
+        {
+          "upTo": 4,
+          "color": "#2FCB5A"
+        },
+        {
+          "upTo": 7,
+          "color": "#FFC300"
+        },
+        {
+          "upTo": 10,
+          "color": "#FF3B30"
+        }
+      ],
+      "off": "#2A2D33",
+      "glow": true
+    },
+    {
+      "id": "gauge",
+      "type": "gauge",
+      "column": "power",
+      "cx": 300,
+      "cy": 838,
+      "r": 145,
+      "stroke": 22,
+      "max": 50,
+      "startDeg": 180,
+      "endDeg": 0,
+      "color": "#FF7A00",
+      "cap": "butt",
+      "dash": "11 7.522"
+    },
+    {
+      "id": "power",
+      "type": "number",
+      "column": "power",
+      "x": 200,
+      "y": 740,
+      "w": 200,
+      "h": 80,
+      "font": {
+        "family": "Orbitron",
+        "weight": 900,
+        "size": 72,
+        "min": 40
+      },
+      "color": "#FF7A00",
+      "align": "center",
+      "valign": "middle",
+      "fit": "shrink"
+    }
+  ]
+}

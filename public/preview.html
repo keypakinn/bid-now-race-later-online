@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preview การ์ด · บิดไปสมาชิก</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kanit:ital,wght@0,400;0,600;1,700&family=Orbitron:wght@900&display=swap">
+<link rel="stylesheet" href="style.css">
+<style>
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+  .one{width:min(92vw,420px)}
+  #sum b{color:var(--orange)}
+</style>
+</head>
+<body class="ck-preview">
+<div id="app">
+  <h1>Preview การ์ด<span class="en">BID NOW, RACE LATER</span></h1>
+  <div class="panel small" id="sum">กำลังโหลด…</div>
+  <div class="panel"><h2>เต็มใบ</h2><div id="full" class="grid"></div></div>
+  <div class="panel"><h2>บนกระดาน (88px + ป้ายชื่อ)</h2><div id="board" class="cards" style="flex-wrap:wrap"></div></div>
+  <div class="panel"><h2>ด้านหลัง</h2><div id="back" class="w130"></div></div>
+</div>
+<script src="card.js"></script>
+<script>
+(async () => {
+  const esc = v => String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const data = await CardKit.load();
+  const full = document.getElementById('full'), board = document.getElementById('board');
+  for (const c of data.cards) {
+    const wrap = document.createElement('div'); wrap.appendChild(CardKit.render(c)); full.appendChild(wrap);
+    const box = document.createElement('div'); box.className = 'cardbox w88';
+    box.appendChild(CardKit.render(c));
+    const cap = document.createElement('div'); cap.className = 'cap'; cap.textContent = `${c.power} · ${c.name}`; box.appendChild(cap);
+    board.appendChild(box);
+  }
+  document.getElementById('back').appendChild(CardKit.back());
+  await document.fonts.ready;
+  await new Promise(r => setTimeout(r, 1500));
+  document.querySelectorAll('.ck-card').forEach(el => CardKit.fitAll(el));
+  const over = document.querySelectorAll('#full [data-overflow]').length;
+  // ตรวจภาพทุกคันด้วย HEAD (ไม่พึ่ง lazy load ของภาพที่ยังไม่เลื่อนถึง)
+  const noArt = [];
+  await Promise.all(data.cards.map(async c => {
+    try { const r = await fetch(`/cards/art/${encodeURIComponent(c.id)}.webp?v=${data.version}`, { method: 'HEAD' }); if (!r.ok) noArt.push(c.id); }
+    catch (e) { noArt.push(c.id); }
+  }));
+  noArt.sort();
+  document.getElementById('sum').innerHTML =
+    `การ์ด <b>${data.cards.length}</b> ใบ · ล้น <b>${over}</b> ช่อง · ไม่มีภาพ <b>${noArt.length}</b> ใบ · รถ default <b>${data.defaults}</b> · คำเตือนตอนอ่าน CSV <b>${data.warnings}</b> · เวอร์ชัน <b>${esc(data.version)}</b>` +
+    (noArt.length ? `<div class="muted" style="margin-top:6px">ไม่มีภาพ: ${noArt.map(esc).join(', ')}</div>` : '');
+  window.PREVIEW_DONE = { cards: data.cards.length, over, noArt: noArt.length };
+})();
+</script>
+</body>
+</html>
