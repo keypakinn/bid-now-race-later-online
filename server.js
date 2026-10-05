@@ -138,9 +138,18 @@ io.on('connection', socket => {
     } catch (e) { room.destroy(); rooms.delete(room.code); roomSockets.delete(room.code); throw e; }
   }));
 
+  // ปุ่ม "เข้าร่วม" ปุ่มเดียว (L6): ห้องยังไม่เริ่มและไม่เต็ม = ผู้เล่น, เกมเริ่มแล้วหรือห้องเต็ม = ผู้ชมอัตโนมัติ
   socket.on('join', (d, ack) => safe(ack, () => {
     const room = getRoom(d && d.code);
-    const p = room.join(str(d && d.name));
+    let p;
+    try { p = room.join(str(d && d.name)); }
+    catch (e) {
+      if (!(e instanceof GameError) || !['GAME_STARTED', 'ROOM_FULL'].includes(e.code)) throw e;
+      updateSpectators(room);
+      if (room.spectators >= CFG.SPECTATORS_MAX) throw new GameError('ROOM_FULL', 'ห้องนี้ผู้ชมเต็มแล้ว');
+      attach(socket, room, null);
+      return { code: room.code, spectator: true, reason: e.code };
+    }
     attach(socket, room, p.id);
     return { code: room.code, playerId: p.id, token: p.token };
   }));

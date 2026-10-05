@@ -15,7 +15,8 @@
     MIN_RAISE: 1,
     BID_TURN_SECONDS: 10,
     PICK_SECONDS: 30,
-    AUCTION_RESULT_SECONDS: 4,
+    AUCTION_RESULT_SECONDS: 5,
+    INTRO_SECONDS: 2, // ป้ายประกาศ Phase / รอบ แสดงป้ายละ 2 วิ เซิร์ฟเวอร์เริ่มนับเวลาหลังป้ายจบ (L1)
     RACE_RESULT_SECONDS: 6,
     LAST_RACE_REVEAL_SECONDS: 3,
     SPECTATORS_MAX: 20,

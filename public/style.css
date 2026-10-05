@@ -2,9 +2,13 @@
   --bg:#0B0C0E; --panel:#16181C; --panel2:#1E2126; --line:#2A2D33;
   --ink:#F2EFE8; --mute:#9DA1A8; --orange:#FF7A00; --orange2:#9F5008;
   --green:#2FCB5A; --yellow:#FFC300; --red:#FF3B30;
+  --accent:#FF7A00; --accentInk:#101114;
 }
+/* สีพื้นหลังแยกตาม Phase (layout v2): ฟ้า = Phase 1 ประมูล, แดงอิฐ = Phase 2 แข่งขัน */
+body.p1{--bg:#0A1222;--panel:#111C33;--panel2:#182847;--line:#26385C;--mute:#9AABC9;--accent:#5BA2FF;--accentInk:#0A1222}
+body.p2{--bg:#1A0B09;--panel:#27120F;--panel2:#361915;--line:#4D241C;--mute:#C9A49B;--accent:#FF5436;--accentInk:#1A0B09}
 *{box-sizing:border-box}
-html,body{margin:0;background:var(--bg);color:var(--ink);font-family:'Kanit',system-ui,sans-serif;font-size:15px;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);transition:background-color .4s;color:var(--ink);font-family:'Kanit',system-ui,sans-serif;font-size:15px;-webkit-tap-highlight-color:transparent}
 body{min-height:100vh;padding-bottom:env(safe-area-inset-bottom)}
 #app{max-width:720px;margin:0 auto;padding:12px 16px 40px}
 button{font:inherit;color:inherit;border:0;border-radius:12px;min-height:44px;padding:0 16px;cursor:pointer;background:var(--panel2)}
@@ -73,3 +77,72 @@ details summary{cursor:pointer;min-height:44px;display:flex;align-items:center;f
 .ck-shrink span{white-space:nowrap}
 .ck-pips{display:flex}.ck-pips i{display:block;border-radius:50%}
 .ck-preview [data-overflow]{outline:3px solid #E5533D}
+
+/* ---------- layout v2 ---------- */
+.center{text-align:center}
+.ell{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pill{font-size:12px;padding:2px 8px;border-radius:999px;background:var(--accent);color:var(--accentInk);font-weight:600;white-space:nowrap}
+button.join{background:#FFC089;color:#101114;font-weight:600}
+button.bid{background:var(--green);color:#0A1222;font-weight:600}
+button.pass{background:#C62828;color:#fff;font-weight:600}
+.myturn{background:var(--panel2);margin:10px 0 0}
+.grid{display:grid;gap:8px}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.g4{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.g4 .prize{min-width:0;padding:6px 4px}
+.cardbox.fill{width:100%;min-width:0}
+.w58{width:58px}
+.got{text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.me{color:var(--orange)}
+.bidlog{background:var(--panel2);border-radius:12px;padding:10px 12px;margin-top:10px}
+.bidlog-list{max-height:186px;overflow-y:auto;margin-top:4px}
+.bl{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line)}
+.bl .n{width:22px;flex:none;text-align:right;font-size:11px;color:var(--mute)}
+.bl .who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bl .note{font-size:11px;color:var(--mute);white-space:nowrap}
+.bl .v{min-width:48px;text-align:right;font-family:'Orbitron',sans-serif;font-size:15px}
+.bl.cur .who{font-weight:700}.bl.cur .v{font-size:22px;color:var(--orange)}
+.bl.pass{opacity:.65}.bl.pass .v{font-family:inherit;font-size:13px;color:#FF8A80}
+.pl{display:flex;gap:10px;align-items:flex-start;border-top:1px solid var(--line);padding:8px 0}
+.pl .l{width:84px;flex:none;display:flex;flex-direction:column;gap:2px;min-width:0}
+.pl .l .pname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pl .l .chip{white-space:normal;font-size:11px}
+.coins{font-family:'Orbitron',sans-serif;font-size:13px;color:var(--yellow)}
+.pl .cars{flex:1;min-width:0;font-size:13px}
+.carline{display:flex;justify-content:space-between;gap:8px}
+.carline span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.carline b,.carchip b,.pw{font-family:'Orbitron',sans-serif;font-size:11px;color:var(--orange)}
+.chips{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:4px 6px}
+.carchip{background:var(--panel2);border-radius:8px;padding:1px 7px;font-size:13px;white-space:nowrap}
+.fold{width:100%;min-height:44px;background:transparent;padding:0;display:flex;justify-content:space-between;align-items:center;font-weight:600;text-align:left}
+.rr{display:flex;align-items:center;gap:10px;border-top:1px solid var(--line);padding:8px 0}
+.rr .rk{width:28px;flex:none;text-align:center;font-family:'Orbitron',sans-serif;font-weight:900;font-size:18px}
+.rr .info{flex:1;min-width:0;display:flex;flex-direction:column}
+.rr .pz{font-family:'Orbitron',sans-serif;font-size:16px;color:var(--orange)}
+.first{color:var(--orange)}
+.dash{color:#5C6068}
+.tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.sum{font-size:12px;white-space:nowrap;width:100%}
+table.sum th,table.sum td{text-align:center;padding:6px 5px;font-family:'Orbitron',sans-serif;font-size:11px}
+table.sum th{font-family:inherit}
+table.sum .nm{text-align:left;font-family:'Kanit',sans-serif;font-size:13px;font-weight:600;max-width:80px;overflow:hidden;text-overflow:ellipsis;position:sticky;left:0;background:var(--panel)}
+table.sum .tot{color:var(--orange);font-size:13px;text-align:right}
+.tabs{display:flex;gap:6px}
+.tabs button{flex:1;min-height:40px;border:1px solid var(--line);background:transparent}
+.tabs button.on{background:var(--accent);color:var(--accentInk);border-color:var(--accent);font-weight:600}
+.rchips{display:flex;flex-wrap:wrap;gap:6px}
+.rchips button{min-height:34px;min-width:44px;padding:0 10px;border-radius:999px;font-family:'Orbitron',sans-serif;font-size:12px;border:1px solid var(--line);background:transparent}
+.rchips button.on{background:var(--ink);color:var(--bg)}
+/* ป้ายประกาศ */
+.intro{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:0 24px;animation:introIn .25s ease-out}
+.intro.p1{--ac:#5BA2FF;--ac2:#2F5FAF;--ac3:#1B3769;background:rgba(8,16,36,.92)}
+.intro.p2{--ac:#FF5436;--ac2:#A82F18;--ac3:#5E1A0E;background:rgba(34,9,6,.92)}
+.intro .lbl{font-family:'Orbitron',sans-serif;font-size:14px;letter-spacing:.3em;color:var(--ac)}
+.intro .ttl{font-size:52px;font-weight:700;font-style:italic;line-height:1.1}
+.intro .bar{height:6px;width:160px;border-radius:3px;background:linear-gradient(90deg,var(--ac) 0 70%,var(--ac2) 70% 85%,var(--ac3) 85%)}
+.intro .rnd-a{font-family:'Orbitron',sans-serif;font-weight:900;font-size:clamp(40px,14vw,56px);color:var(--ac);letter-spacing:.04em}
+.intro .rnd-n{font-family:'Orbitron',sans-serif;font-weight:900;font-size:clamp(52px,18vw,72px);line-height:1}
+.intro .sub{font-size:15px;color:#E5E1DA}
+@keyframes introIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.intro{animation:none}html,body{transition:none}}

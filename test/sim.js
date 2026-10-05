@@ -21,7 +21,7 @@ function test(name, fn) {
 const throwsCode = (fn, code) => assert.throws(fn, e => e instanceof GameError && e.code === code, `ต้องได้ ${code}`);
 
 function newRoom(n, seed = 1) {
-  const room = new Room('TEST', { cards: CARDS, rand: seeded(seed) });
+  const room = new Room('TEST', { cards: CARDS, rand: seeded(seed), introSeconds: 0 });
   const ps = [];
   for (let i = 0; i < n; i++) ps.push(room.join('P' + (i + 1)));
   return { room, ps };
@@ -73,7 +73,7 @@ test('T-26 ไม่มี data.csv → Car 1…Car 50 เกมเล่นไ�
   const cat = buildCatalog(null, () => {});
   assert.strictEqual(cat.cards.length, 50);
   assert.strictEqual(cat.cards[0].name, 'Car 1');
-  const room = new Room('X', { cards: cat.cards, rand: seeded(3) });
+  const room = new Room('X', { cards: cat.cards, rand: seeded(3), introSeconds: 0 });
   const a = room.join('A'); room.join('B'); room.start(a.id);
   assert.strictEqual(room.phase, 'auction');
 });
@@ -403,12 +403,116 @@ test('เจ้าของห้องออกใน lobby → สิทธิ
   assert.strictEqual(room.players.length, 2);
 });
 
+// ---------- ป้ายประกาศ + ประวัติ bid (layout v2: L1, L4, L5) ----------
+function introRoom(n, seed = 5) {
+  let t = 1000000;
+  const room = new Room('INTR', { cards: CARDS, rand: seeded(seed), now: () => t });
+  const ps = []; for (let i = 0; i < n; i++) ps.push(room.join('P' + (i + 1)));
+  return { room, ps, tick: ms => { t += ms; } };
+}
+test('T-30 เริ่มเกม: ป้าย PHASE 1 + AUCTION 1 รวม 4 วิ ยังไม่มีใครถึงตาจนป้ายจบ แล้วจึงนับ 10 วิ (L1)', () => {
+  const { room, ps } = introRoom(3);
+  room.start(ps[0].id);
+  assert.strictEqual(room.phase, 'auction');
+  assert.strictEqual(room.auction.turnId, null);
+  const st = room.getState(ps[0].id);
+  assert.deepStrictEqual(st.intro.steps.map(s => s.kind + s.no), ['phase1', 'auction1']);
+  assert.strictEqual(st.intro.steps[1].endsAt - st.intro.steps[0].endsAt, CFG.INTRO_SECONDS * 1000);
+  assert.strictEqual(st.endsAt, st.intro.steps[1].endsAt);
+  const opener = seat(room, 0), next = seat(room, 1);
+  throwsCode(() => room.raise(next.id, { amount: 2 }), 'NOT_YOUR_TURN');
+  room.endPhaseNow();
+  assert.strictEqual(room.intro, null);
+  assert.strictEqual(room.auction.turnId, next.id);
+  assert.strictEqual(room.endsAt - room.now(), CFG.BID_TURN_SECONDS * 1000);
+  assert.ok(opener);
+});
+test('T-31 ผลประมูลแสดง 5 วิ แล้ว Auction 2 มีป้าย AUCTION อย่างเดียว (L1, L5)', () => {
+  const { room, ps } = introRoom(3);
+  room.start(ps[0].id); room.endPhaseNow();
+  while (room.phase === 'auction') room.pass(room.auction.turnId);
+  assert.strictEqual(room.phase, 'auctionResult');
+  assert.strictEqual(room.endsAt - room.now(), 5000);
+  room.endPhaseNow();
+  assert.strictEqual(room.auctionNo, 2);
+  assert.deepStrictEqual(room.intro.steps.map(s => s.kind + s.no), ['auction2']);
+  assert.ok(room.getState(null).auctionHistory.length === 1, 'ผลประมูลรอบก่อนเปิดดูได้ทุกเฟส');
+});
+test('T-32 Race 1: ป้าย PHASE 2 + RACE 1, เลือกรถระหว่างป้ายไม่ได้, หลังป้ายนับ 30 วิ (L1)', () => {
+  const { room, ps } = introRoom(3);
+  room.start(ps[0].id);
+  passAllAuctions(room);
+  assert.strictEqual(room.phase, 'racePick');
+  assert.deepStrictEqual(room.intro.steps.map(s => s.kind + s.no), ['phase2', 'race1']);
+  const A = room.players[0];
+  throwsCode(() => room.select(A.id, { cardId: A.cars[0] }), 'WRONG_PHASE');
+  room.endPhaseNow();
+  assert.strictEqual(room.intro, null);
+  assert.strictEqual(room.endsAt - room.now(), CFG.PICK_SECONDS * 1000);
+  room.select(A.id, { cardId: A.cars[0] }); room.confirm(A.id);
+  room.endPhaseNow(); room.endPhaseNow(); // เปิดผล → Race 2 (ป้าย RACE 2)
+  assert.deepStrictEqual(room.intro.steps.map(s => s.kind + s.no), ['race2']);
+});
+test('T-33 ทุกคนออกยกเว้น 1 ระหว่างป้าย Race → ไม่เปิดผลก่อนป้ายจบ, Race สุดท้ายมีป้ายแล้วค่อยนับ 3 วิ (L1, R-7-21)', () => {
+  const { room, ps } = introRoom(2);
+  room.start(ps[0].id);
+  passAllAuctions(room);
+  room.leave(room.players[1].id);
+  assert.strictEqual(room.phase, 'racePick');
+  assert.ok(room.intro);
+  room.endPhaseNow(); // ป้ายจบ → นับเวลาเลือก
+  assert.strictEqual(room.phase, 'racePick');
+  room.endPhaseNow(); room.endPhaseNow(); // หมดเวลา → ผล → Race 2 (สุดท้าย)
+  assert.strictEqual(room.raceNo, 2);
+  assert.deepStrictEqual(room.intro.steps.map(s => s.kind + s.no), ['race2']);
+  room.endPhaseNow();
+  assert.strictEqual(room.endsAt - room.now(), CFG.LAST_RACE_REVEAL_SECONDS * 1000);
+  room.endPhaseNow(); room.endPhaseNow();
+  assert.strictEqual(room.phase, 'gameOver');
+});
+test('T-34 ประวัติ bid ทั้งรอบ (open/raise/pass/out) และ Coins ตอนเริ่มรอบ อยู่ใน state ของทุกคน (L4)', () => {
+  const { room } = started(3);
+  forceAuction(room, 1, [10, 10, 1]);
+  const [s0, s1, s2] = [0, 1, 2].map(s => seat(room, s));
+  room.raise(s1.id, { amount: 3 }); // s2 มี 1 Coin → ออกอัตโนมัติ
+  room.pass(s0.id);
+  const st = room.getState(null);
+  assert.strictEqual(st.phase, 'auctionResult');
+  assert.strictEqual(room.auction.log.length, 4);
+  assert.deepStrictEqual(room.auction.log.map(e => e.kind), ['open', 'raise', 'out', 'pass']);
+  assert.strictEqual(room.auction.log[2].pid, s2.id);
+  const view = room.getState(s0.id).auction;
+  assert.deepStrictEqual(view.log.map(e => e.amount), [1, 3, undefined, undefined]);
+  assert.deepStrictEqual(view.startCoins, { [s0.id]: 10, [s1.id]: 10, [s2.id]: 1 });
+});
+test('T-35 บอทสุ่มเล่นครบทั้งที่มีป้ายประกาศ x=2–7 อย่างละ 40 เกม (L1)', () => {
+  for (let n = 2; n <= 7; n++) for (let g = 0; g < 40; g++) {
+    const rand = seeded(7000 + n * 100 + g);
+    const room = new Room('SIM2', { cards: CARDS, rand });
+    const ps = []; for (let i = 0; i < n; i++) ps.push(room.join('B' + i));
+    room.start(ps[0].id);
+    let guard = 0;
+    while (room.phase !== 'gameOver' && guard++ < 5000) {
+      if (room.phase === 'auction' && room.auction.turnId) {
+        const p = room.player(room.auction.turnId), a = room.auction;
+        if (rand() < 0.4 && p.coins > a.currentBid) room.raise(p.id, { amount: a.currentBid + 1 }); else room.pass(p.id);
+      } else if (room.phase === 'racePick' && !room.intro && room.raceNo !== n) {
+        for (const p of room.players) if (!room.race.confirmed.has(p.id)) { room.select(p.id, { cardId: p.cars[0] }); room.confirm(p.id); }
+        if (room.phase === 'racePick') room.endPhaseNow();
+      } else room.endPhaseNow();
+    }
+    assert.strictEqual(room.phase, 'gameOver', `n=${n} g=${g} ค้างที่ ${room.phase}`);
+    assert.ok(room.players.every(p => p.coins >= 0 && p.cars.length === 0));
+    room.destroy();
+  }
+});
+
 // ---------- T-29 จำลองเกมเต็มด้วยบอทสุ่ม ----------
 test('T-29 บอทสุ่ม x=2–7 อย่างละ 300 เกม: จบทุกเกม, Coins ≥ 0, ใช้รถครบ, Prize รวมตรง', () => {
   for (let n = 2; n <= 7; n++) {
     for (let g = 0; g < 300; g++) {
       const rand = seeded(n * 1000 + g);
-      const { room } = (() => { const room = new Room('SIM', { cards: CARDS, rand }); const ps = []; for (let i = 0; i < n; i++) ps.push(room.join('B' + i)); room.start(ps[0].id); return { room }; })();
+      const { room } = (() => { const room = new Room('SIM', { cards: CARDS, rand, introSeconds: 0 }); const ps = []; for (let i = 0; i < n; i++) ps.push(room.join('B' + i)); room.start(ps[0].id); return { room }; })();
       let guard = 0;
       while (room.phase !== 'gameOver' && guard++ < 5000) {
         if (room.phase === 'auction' && room.auction.turnId) {

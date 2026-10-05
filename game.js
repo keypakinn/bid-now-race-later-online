@@ -57,6 +57,8 @@ class Room {
     this.rand = opts.rand || Math.random;
     this.log = opts.log || (() => {});
     this.now = opts.now || Date.now;
+    this.introSeconds = opts.introSeconds != null ? opts.introSeconds : CFG.INTRO_SECONDS; // test ส่ง 0 ได้
+    this.intro = null;
     this.players = []; // ลำดับ = ลำดับที่เข้าห้อง (ก่อนเริ่ม) / ที่นั่ง (หลังเริ่ม)
     this.hostId = null;
     this.phase = 'lobby';
@@ -73,6 +75,7 @@ class Room {
     this.auction = null; this.auctionNo = 0; this.auctionHistory = [];
     this.race = null; this.raceNo = 0; this.raceHistory = [];
     this.standings = null; this.tieBreak = null; this.cancelReason = null;
+    this.intro = null;
     this.events = [];
   }
 
@@ -103,6 +106,13 @@ class Room {
   }
   clearTimer() { if (this.timer) clearTimeout(this.timer); this.timer = null; this.endsAt = null; this.onTimer = null; }
   // ให้ test เรียกแทนรอเวลาจริง
+  // ป้ายประกาศ (L1): แสดงทีละป้าย ป้ายละ introSeconds แล้วจึงเรียก then() ซึ่งเริ่มนับเวลาของเฟส
+  runIntro(steps, then) {
+    if (!this.introSeconds) { this.intro = null; then(); return; }
+    const t0 = this.now(), ms = this.introSeconds * 1000;
+    this.intro = { steps: steps.map((s, i) => ({ ...s, endsAt: t0 + (i + 1) * ms })) };
+    this.setTimer(steps.length * this.introSeconds, () => { this.intro = null; then(); });
+  }
   endPhaseNow() { const f = this.onTimer; this.clearTimer(); if (f) f(); this.bump(); }
   destroy() { this.clearTimer(); }
 
@@ -158,6 +168,7 @@ class Room {
   }
   cancel(reason) {
     this.clearTimer();
+    this.intro = null;
     this.phase = 'cancelled'; this.cancelReason = reason;
     this.logEvent('cancelled', { reason });
     this.emit('game:cancelled', { reason });
@@ -207,10 +218,14 @@ class Room {
     const openBid = opener.coins >= CFG.OPENING_BID ? CFG.OPENING_BID : 0; // R-7-02
     this.auction = {
       no: k, set: this.carSets[k - 1], openerId: opener.id, currentBid: openBid,
-      highBidderId: opener.id, turnId: null, seq: 0, out: new Map(), bids: [{ pid: opener.id, amount: openBid, auto: true }]
+      highBidderId: opener.id, turnId: null, seq: 0, out: new Map(),
+      // ประวัติ bid ทั้งรอบ (สาธารณะ): open / raise / pass / out
+      log: [{ pid: opener.id, kind: 'open', amount: openBid }],
+      startCoins: Object.fromEntries(this.players.map(p => [p.id, p.coins])) // ใช้เรียงรายชื่อผู้เล่น (L4)
     };
     this.logEvent('auction:start', { no: k, opener: opener.id, openBid });
-    this.advanceTurn(opener.seat);
+    const steps = k === 1 ? [{ kind: 'phase', no: 1 }, { kind: 'auction', no: k }] : [{ kind: 'auction', no: k }];
+    this.runIntro(steps, () => this.advanceTurn(opener.seat));
   }
   othersAllOut() {
     const a = this.auction;
@@ -231,6 +246,7 @@ class Room {
       seat = next.seat;
       if (next.coins < a.currentBid + CFG.MIN_RAISE) {
         a.out.set(next.id, 'no_money');
+        a.log.push({ pid: next.id, kind: 'out', reason: 'no_money' });
         this.logEvent('auction:out', { pid: next.id, reason: 'no_money' });
         continue;
       }
@@ -259,7 +275,7 @@ class Room {
     if (amount > p.coins) throw err('BID_OVER_COINS', `สูงสุด ${p.coins}`);
     this.dedupe(p, data.requestId);
     a.currentBid = amount; a.highBidderId = pid;
-    a.bids.push({ pid, amount });
+    a.log.push({ pid, kind: 'raise', amount });
     this.logEvent('auction:raise', { pid, amount });
     this.advanceTurn(p.seat);
     this.bump();
@@ -275,6 +291,7 @@ class Room {
     const a = this.auction;
     if (this.phase !== 'auction' || a.turnId !== pid) return;
     a.out.set(pid, reason);
+    a.log.push({ pid, kind: 'pass', reason });
     a.turnId = null;
     this.clearTimer();
     this.logEvent('auction:pass', { pid, reason });
@@ -312,14 +329,17 @@ class Room {
     this.race = { no: r, prizes, picks: new Map(), confirmed: new Set(), auto: new Set() };
     this.logEvent('race:prizes', { no: r, prizes });
     this.emit('race:prizes', { no: r, prizes });
+    const steps = r === 1 ? [{ kind: 'phase', no: 2 }, { kind: 'race', no: r }] : [{ kind: 'race', no: r }];
     if (r === this.x) { // R-7-21
       for (const p of this.players) { this.race.picks.set(p.id, p.cars[0]); this.race.confirmed.add(p.id); this.race.auto.add(p.id); }
-      this.setTimer(CFG.LAST_RACE_REVEAL_SECONDS, () => this.revealRace());
+      this.runIntro(steps, () => this.setTimer(CFG.LAST_RACE_REVEAL_SECONDS, () => this.revealRace()));
       return;
     }
-    this.setTimer(CFG.PICK_SECONDS, () => this.pickDeadline()); // R-7-22
     for (const p of this.players) if (p.left) this.autoPick(p); // R-7-23
-    this.checkRaceEarly();
+    this.runIntro(steps, () => {
+      this.setTimer(CFG.PICK_SECONDS, () => this.pickDeadline()); // R-7-22 นับหลังป้ายจบ
+      this.checkRaceEarly();
+    });
   }
   randomCar(p) { return p.cars[Math.floor(this.rand() * p.cars.length)]; }
   autoPick(p) {
@@ -331,7 +351,7 @@ class Room {
   }
   select(pid, data = {}) {
     const p = this.player(pid);
-    if (this.phase !== 'racePick' || this.raceNo === this.x) throw err('WRONG_PHASE');
+    if (this.phase !== 'racePick' || this.raceNo === this.x || this.intro) throw err('WRONG_PHASE');
     if (data.raceNo != null && Number(data.raceNo) !== this.raceNo) throw err('WRONG_PHASE');
     const r = this.race;
     if (r.confirmed.has(pid)) throw err('ALREADY_CONFIRMED');
@@ -343,7 +363,7 @@ class Room {
   }
   confirm(pid, data = {}) {
     const p = this.player(pid);
-    if (this.phase !== 'racePick' || this.raceNo === this.x) throw err('WRONG_PHASE');
+    if (this.phase !== 'racePick' || this.raceNo === this.x || this.intro) throw err('WRONG_PHASE');
     if (data.raceNo != null && Number(data.raceNo) !== this.raceNo) throw err('WRONG_PHASE');
     const r = this.race;
     if (r.confirmed.has(pid)) throw err('ALREADY_CONFIRMED');
@@ -356,7 +376,7 @@ class Room {
     this.bump();
   }
   checkRaceEarly() { // R-7-25
-    if (this.phase === 'racePick' && this.raceNo !== this.x && this.players.every(p => this.race.confirmed.has(p.id))) {
+    if (this.phase === 'racePick' && !this.intro && this.raceNo !== this.x && this.players.every(p => this.race.confirmed.has(p.id))) {
       this.clearTimer();
       this.revealRace();
     }
@@ -458,8 +478,10 @@ class Room {
       })),
       auction: inAuction ? {
         no: a.no, set: a.set.slice(), openerId: a.openerId, currentBid: a.currentBid, highBidderId: a.highBidderId,
-        turnId: a.turnId, seq: a.seq, out: Object.fromEntries(a.out), minBid: a.currentBid + CFG.MIN_RAISE
+        turnId: a.turnId, seq: a.seq, out: Object.fromEntries(a.out), minBid: a.currentBid + CFG.MIN_RAISE,
+        log: a.log.slice(), startCoins: a.startCoins
       } : null,
+      intro: this.intro ? { steps: this.intro.steps.map(s => ({ ...s })) } : null,
       race: inRace ? { no: r.no, prizes: r.prizes.slice(), confirmed: [...r.confirmed], last: r.no === this.x } : null,
       myPick: null, myConfirmed: false,
       auctionHistory: this.auctionHistory, raceHistory: this.raceHistory,
