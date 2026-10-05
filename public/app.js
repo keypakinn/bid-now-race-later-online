@@ -43,7 +43,7 @@
   const cardEls = new Map(); // key = location:id → element (ย้าย element เดิม ไม่สร้างใหม่ทุกครั้ง)
   function cardBox(id, where, w, extra) { // w = 0 → กว้างเต็มช่องของ grid
     const c = card(id), x = extra || {};
-    return `<div class="cardbox ${w ? 'w' + w : 'fill'} ${x.cls || ''}"><div class="cslot" data-card="${esc(id)}" data-where="${esc(where)}"></div>` +
+    return `<div class="cardbox ${w ? 'w' + w : 'fill'} ${x.cls || ''}" ${x.attrs || ''}><div class="cslot" data-card="${esc(id)}" data-where="${esc(where)}"></div>` +
       (x.cap === false ? '' : `<div class="cap" title="${esc(c.name)} · ${esc(c.power)}"><b>${esc(c.power)}</b> ${esc(c.name)}</div>`) + `${x.after || ''}</div>`;
   }
   function placeCards() {
@@ -130,6 +130,10 @@
       case 'confirm': if (busy) return; busy = true; act('race:confirm', { raceNo: st.race.no }); break;
     }
   });
+  document.addEventListener('keydown', e => { // การ์ดที่แตะเลือกได้ ใช้ Enter/Space ได้ด้วย
+    const t = e.target.closest && e.target.closest('[role="button"][data-act]');
+    if (t && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); t.click(); }
+  });
   document.addEventListener('input', e => {
     if (e.target.id === 'in-bid') { S.drafts.bid = e.target.value; S.drafts.bidSeq = S.st && S.st.auction ? S.st.auction.seq : null; }
     if (e.target.id === 'in-name') S.drafts.name = e.target.value;
@@ -137,20 +141,45 @@
   });
 
   // ---------- เวลา (คำนวณจาก endsAt ของ server — R-10-02) ----------
-  function remain() { return S.st && S.st.endsAt && !introStep() ? Math.max(0, Math.ceil((S.st.endsAt - (Date.now() + S.offset)) / 1000)) : null; }
+  function remain() { return S.st && S.st.endsAt && !introStep() && S.st.phase !== 'raceRun' ? Math.max(0, Math.ceil((S.st.endsAt - (Date.now() + S.offset)) / 1000)) : null; }
   let introKey = '';
   setInterval(() => {
     const s = introStep(), k = s ? s.kind + s.no : '';
     if (k !== introKey) { introKey = k; render(); } // เปลี่ยนป้าย / ป้ายจบ
     const r = remain();
-    document.querySelectorAll('.js-timer').forEach(el => { el.textContent = r == null ? '' : r; el.classList.toggle('low', r != null && r <= 3); });
+    document.querySelectorAll('.js-timer').forEach(el => { el.textContent = r == null ? '' : r; el.classList.toggle('low', r != null && r <= CFG.WARNING_SECONDS); });
+    updateWarn(r);
   }, 250);
+
+  // ---------- ป๊อปอัปเตือนเวลา (v3) — ไม่บังการกด (pointer-events: none) ----------
+  // ตัวเลขใหญ่: ประมูล = เฉพาะคนที่ถึงตา · เลือกรถ = ทุกคน · ข้อความเตือน = คนที่ยังไม่เลือก/ยังไม่ยืนยัน
+  const warnEl = document.createElement('div');
+  warnEl.className = 'warn'; warnEl.hidden = true; warnEl.setAttribute('aria-live', 'polite');
+  warnEl.innerHTML = '<div class="wn"></div><div class="wm"></div>';
+  document.body.appendChild(warnEl);
+  let warnNum = null;
+  function updateWarn(r) {
+    const st = S.st; let num = null, msg = '';
+    if (st && r != null && r > 0) {
+      if (st.phase === 'auction' && st.auction && st.auction.turnId && st.auction.turnId === st.me && !st.myLeft && r <= CFG.WARNING_SECONDS) num = r;
+      if (st.phase === 'racePick' && st.race && !st.race.last) {
+        if (r <= CFG.WARNING_SECONDS) num = r;
+        if (st.me && !st.myLeft && !st.myConfirmed && r <= CFG.PICK_REMIND_SECONDS) msg = st.myPick ? 'อย่าลืมกดยืนยันรถ' : 'ยังไม่ได้เลือกรถ! แตะการ์ดเพื่อเลือก';
+      }
+    }
+    const wn = warnEl.firstChild, wm = warnEl.lastChild;
+    if (num !== warnNum) { warnNum = num; wn.textContent = num == null ? '' : num; wn.classList.remove('beat'); void wn.offsetWidth; if (num != null) wn.classList.add('beat'); }
+    wn.hidden = num == null; wm.textContent = msg; wm.hidden = !msg;
+    warnEl.hidden = num == null && !msg;
+  }
 
   // ---------- views (layout v2) ----------
   const of = (a, b) => `${a} / ${b}`; // ตัวนับรอบแบบ "2 / 7"
-  const PH = { auction: 1, auctionResult: 1, racePick: 2, raceResult: 2 };
-  const phaseLabel = { auction: 'PHASE 1 · ประมูล', auctionResult: 'PHASE 1 · ผลประมูล', racePick: 'PHASE 2 · เลือกรถ', raceResult: 'PHASE 2 · ผล Race', gameOver: 'จบเกม', cancelled: 'ยกเลิก' };
+  const PH = { auction: 1, auctionResult: 1, racePick: 2, raceRun: 2, raceResult: 2 };
+  const phaseLabel = { auction: 'PHASE 1 · ประมูล', auctionResult: 'PHASE 1 · ผลประมูล', racePick: 'PHASE 2 · เลือกรถ', raceRun: 'PHASE 2 · RACE START', raceResult: 'PHASE 2 · ผล Race', gameOver: 'จบเกม', cancelled: 'ยกเลิก' };
   const meCls = id => (S.st && id === S.st.me ? 'me' : '');
+  // ชื่อผู้เล่น + ป้าย "คุณ" (v3: ใช้แทนตัวหนังสือสีส้ม เพื่อไม่ให้ปนกับสีทอง/เงิน/ทองแดงของอันดับ)
+  const nm = pid => esc(P(pid).name) + (S.st && pid === S.st.me ? ' <span class="you">คุณ</span>' : '');
 
   function viewHome() {
     const code = S.drafts.code != null ? S.drafts.code : roomFromUrl();
@@ -210,7 +239,7 @@
       const isBid = e.kind === 'open' || e.kind === 'raise';
       const note = e.kind === 'open' ? 'เปิดอัตโนมัติ' : e.kind === 'out' ? 'Coins ไม่พอ' : e.reason === 'timeout' ? 'หมดเวลา' : '';
       const v = isBid ? e.amount : e.kind === 'out' ? 'ออก' : 'Pass';
-      return `<div class="bl ${isBid ? '' : 'pass'} ${i === curIdx ? 'cur' : ''}"><span class="n">${i + 1}</span><span class="who ${meCls(e.pid)}">${esc(P(e.pid).name)}</span><span class="note">${note}</span><span class="v">${v}</span></div>`;
+      return `<div class="bl ${isBid ? '' : 'pass'} ${i === curIdx ? 'cur' : ''}"><span class="n">${i + 1}</span><span class="who">${nm(e.pid)}</span><span class="note">${note}</span><span class="v">${v}</span></div>`;
     }).reverse().join('');
     return `<div class="bidlog"><div class="row"><b class="grow">ประวัติ bid รอบนี้</b><span class="small muted">ล่าสุดอยู่บน</span></div><div class="bidlog-list">${rows}</div></div>`;
   }
@@ -222,14 +251,14 @@
     const sc = p => (a.startCoins && a.startCoins[p.id] != null ? a.startCoins[p.id] : p.coins);
     const list = st.players.slice().sort((p, q) => sc(q) - sc(p) || ((p.seat - o + x) % x) - ((q.seat - o + x) % x));
     return `<div class="panel plist"><div class="row"><h2 class="grow" style="margin:0">ผู้เล่น</h2><span class="small muted">เรียงตาม Coins ตอนเริ่มรอบนี้</span></div>
-      ${list.map(p => `<div class="pl"><div class="l"><span class="pname ${meCls(p.id)}">${esc(p.name)}</span><span class="coins">🪙 ${p.coins}</span>${playerStatus(p)}</div>
+      ${list.map(p => `<div class="pl"><div class="l"><span class="pname">${nm(p.id)}</span><span class="coins">🪙 ${p.coins}</span>${playerStatus(p)}</div>
         <div class="cars">${p.cars.length ? p.cars.map(id => `<div class="carline"><span>${esc(card(id).name)}</span><b>${card(id).power}</b></div>`).join('') : '<span class="muted">ยังไม่มีรถ</span>'}</div></div>`).join('')}
     </div>`;
   }
   function allocGrid(st, res, where) {
     const rows = Object.entries(res.allocation).sort((x, y) => card(y[1]).power - card(x[1]).power);
     return `<div class="grid g2">${rows.map(([pid, cid]) => cardBox(cid, where, 0, { cap: false,
-      after: `<div class="got"><span class="small muted">ได้โดย</span> <b class="${meCls(pid)}">${esc(P(pid).name)}</b></div>` })).join('')}</div>`;
+      after: `<div class="got"><span class="small muted">ได้โดย</span> <b>${nm(pid)}</b></div>` })).join('')}</div>`;
   }
   function viewAuction(st) {
     const a = st.auction;
@@ -257,61 +286,142 @@
   }
 
   // ---------- Phase 2: แข่งขัน ----------
+  const medal = rk => (rk === 1 ? 'm1' : rk === 2 ? 'm2' : rk === 3 ? 'm3' : '');
   function remainingBox(st) {
     const open = S.ui.remain;
     const r = st.race;
     return `<div class="panel"><button class="fold" data-act="fold" data-key="remain" aria-expanded="${open}"><span>${open ? '▾' : '▸'} รถที่เหลือของผู้เล่นแต่ละคน</span><span class="small muted">${open ? 'กดเพื่อยุบ' : 'กดเพื่อเปิด'}</span></button>
-      ${open ? st.players.map(p => `<div class="pl"><div class="l"><span class="pname ${meCls(p.id)}">${esc(p.name)}</span>
+      ${open ? st.players.map(p => `<div class="pl"><div class="l"><span class="pname">${nm(p.id)}</span>
         <span class="small muted">${p.left ? 'ออกแล้ว' : r.confirmed.includes(p.id) ? 'ยืนยันแล้ว' : 'ยังไม่ยืนยัน'}</span></div>
         <div class="chips">${p.cars.map(id => `<span class="carchip"><b>${card(id).power}</b> ${esc(card(id).name)}</span>`).join('') || '<span class="muted small">ไม่มีรถเหลือ</span>'}</div></div>`).join('') : ''}
     </div>`;
   }
-  function summaryTable(st, order) { // แต่ละช่อง = Power,อันดับ (L3)
+  function summaryTable(st, order) { // แต่ละช่อง = Power,อันดับ · สีทอง/เงิน/ทองแดง = อันดับ 1/2/3
     const n = st.x, hs = st.raceHistory;
     return `<div class="tscroll"><table class="sum"><tr><th class="nm">ชื่อ</th>${Array.from({ length: n }, (_, i) => `<th>R${i + 1}</th>`).join('')}</tr>
-      ${order.map(pid => `<tr><td class="nm ${meCls(pid)}">${esc(P(pid).name)}</td>${Array.from({ length: n }, (_, i) => {
+      ${order.map(pid => `<tr><td class="nm">${nm(pid)}</td>${Array.from({ length: n }, (_, i) => {
         const row = hs[i] && hs[i].rows.find(x => x.playerId === pid);
-        return row ? `<td class="${row.rank === 1 ? 'first' : ''}">${row.power},${row.rank}</td>` : '<td class="dash">–</td>';
+        return row ? `<td class="${medal(row.rank)}">${row.power},${row.rank}</td>` : '<td class="dash">–</td>';
       }).join('')}</tr>`).join('')}</table></div>`;
+  }
+  const CROWN = c => `<svg class="crown ${c}" viewBox="0 0 24 17" aria-hidden="true"><path d="M2 15 L3.5 4 L8.5 9 L12 1.5 L15.5 9 L20.5 4 L22 15 Z"/><rect x="2" y="14" width="20" height="2.6" rx="1"/></svg>`;
+  // แท่นรับรางวัล: items = [{rank, pid, cardId?, value, sub}] เรียงอันดับ 1,2,3 — แสดง 2 | 1 | 3
+  function podium(items, where) {
+    const col = it => !it ? '<div class="pcol"></div>' : `<div class="pcol r${Math.min(it.rank, 3)}">${CROWN(medal(it.rank))}
+      <div class="pname ell">${nm(it.pid)}</div>${it.cardId ? cardBox(it.cardId, where, it.rank === 1 ? 64 : 50, { cap: false }) : ''}
+      ${it.sub ? `<div class="psub ell">${it.sub}</div>` : ''}
+      <div class="step ${medal(it.rank)}"><div class="prk">${it.rank}</div><div class="pval">${it.value}</div></div></div>`;
+    return `<div class="podium">${col(items[1])}${col(items[0])}${col(items[2])}</div>`;
+  }
+  function restList(items) { // อันดับ 4 ลงไป: ตัวเล็ก สีจาง
+    return items.length ? `<div class="rest">${items.map(it => `<div class="rrow"><span class="rk">${it.rank}</span><span class="grow ell">${nm(it.pid)} <span class="small muted">${it.sub || ''}</span></span><span class="rv">${it.value}</span></div>`).join('')}</div>` : '';
   }
   function viewRace(st) {
     const r = st.race;
+    if (st.phase === 'raceRun') return `<div class="panel runpanel"><div id="runhost"></div></div>`;
     if (st.phase === 'raceResult') {
       const res = st.raceHistory[st.raceHistory.length - 1];
-      return `<div class="panel"><h2>ผล Race ${of(res.no, st.x)}</h2>
-        ${res.rows.map(row => `<div class="rr"><div class="rk ${row.rank === 1 ? 'first' : ''}">${row.rank}</div>${cardBox(row.cardId, 'rr', 58, { cap: false })}
-          <div class="info"><span class="pname ${meCls(row.playerId)}">${esc(P(row.playerId).name)}</span>
-          <span class="small ell">${esc(card(row.cardId).name)} · <b class="pw">${row.power}</b></span>${row.auto ? '<span class="small muted">ระบบสุ่มให้</span>' : ''}</div>
-          <div class="pz">+${row.prize}</div></div>`).join('')}</div>
-        <div class="panel"><h2>สรุปทุกรอบ</h2><div class="small muted" style="margin-bottom:4px">แต่ละช่อง = Power, อันดับ</div>${summaryTable(st, res.rows.map(x => x.playerId))}</div>`;
+      const it = row => ({ rank: row.rank, pid: row.playerId, cardId: row.cardId, value: '+' + row.prize, sub: `${esc(card(row.cardId).name)} · ${row.power}${row.auto ? ' · สุ่ม' : ''}` });
+      return `<div class="panel"><div class="row"><h2 class="grow" style="margin:0">ผล Race ${of(res.no, st.x)}</h2></div>
+        ${podium(res.rows.slice(0, 3).map(it), 'pod')}${restList(res.rows.slice(3).map(it))}</div>
+        <div class="panel"><h2>สรุปทุกรอบ</h2><div class="small muted" style="margin-bottom:4px">แต่ละช่อง = Power, อันดับ · ทอง/เงิน/ทองแดง = อันดับ 1/2/3</div>${summaryTable(st, res.rows.map(x => x.playerId))}</div>`;
     }
     const me = st.me ? P(st.me) : null;
     let body = '';
     if (r.last) body = '<div class="banner">Race สุดท้าย — ทุกคนเหลือรถคันเดียว ระบบเลือกให้อัตโนมัติ</div>';
     else if (me && !st.myLeft) {
       if (st.myConfirmed) body = `<div class="panel" style="background:var(--panel2)">ยืนยันแล้ว: <b>${esc(card(st.myPick).name)} · ${card(st.myPick).power}</b><div class="small muted">รอคนอื่นเลือก…</div></div>`;
-      else body = `<div class="small muted" style="margin-top:10px">เลือกรถที่จะใช้ (เปลี่ยนได้จนกดยืนยัน)</div>
-        <div class="grid g3" style="margin-top:8px">${me.cars.map(id => cardBox(id, 'pick', 0, { cls: st.myPick === id ? 'sel' : '',
-          after: `<button class="${st.myPick === id ? 'primary' : ''}" data-act="pick" data-card="${esc(id)}">${st.myPick === id ? 'เลือกอยู่' : 'ใช้คันนี้'}</button>` })).join('')}</div>
-        <button class="primary" style="width:100%;margin-top:10px" data-act="confirm" ${st.myPick ? '' : 'disabled'}>ยืนยันรถ</button>`;
+      else body = `<div class="small muted" style="margin-top:10px">แตะการ์ดเพื่อเลือกรถ (เปลี่ยนได้จนกดยืนยัน)</div>
+        <div class="grid g3 pickgrid" style="margin-top:8px">${me.cars.map(id => cardBox(id, 'pick', 0, { cls: 'pickable' + (st.myPick === id ? ' sel' : ''),
+          attrs: `data-act="pick" data-card="${esc(id)}" role="button" tabindex="0" aria-pressed="${st.myPick === id}"` })).join('')}</div>
+        <button class="primary" style="width:100%;margin-top:12px" data-act="confirm" ${st.myPick ? '' : 'disabled'}>ยืนยันรถ</button>`;
     }
     const waiting = st.players.filter(p => !r.confirmed.includes(p.id));
-    body += `<div class="small muted" style="margin-top:8px">${waiting.length ? 'ยังไม่เลือก: ' + waiting.map(p => esc(p.name)).join(', ') : 'ทุกคนเลือกแล้ว'}</div>`;
+    body += `<div class="small muted" style="margin-top:8px">${waiting.length ? 'ยังไม่ยืนยัน: ' + waiting.map(p => esc(p.name)).join(', ') : 'ทุกคนยืนยันแล้ว'}</div>`;
     return `<div class="panel"><h2>Race ${of(r.no, st.x)}</h2>
       <div class="grid g4">${r.prizes.map((v, i) => `<div class="prize"><span class="r">อันดับ ${i + 1}</span><span class="v">${v}</span></div>`).join('')}</div>${body}</div>${remainingBox(st)}`;
   }
 
   // ---------- จบเกม ----------
   function viewOver(st) {
-    const winners = st.standings.filter(s => s.winner), n = st.x, hs = st.raceHistory;
+    const n = st.x, hs = st.raceHistory, S2 = st.standings;
     const tb = { prize: 'ตัดสินด้วย Prize รวม', firstPlaces: 'Prize เท่ากัน ตัดสินด้วยจำนวนครั้งที่ได้อันดับ 1', shared: 'Prize และจำนวนอันดับ 1 เท่ากัน — ชนะร่วม' }[st.tieBreak] || '';
-    return `<div class="panel"><div class="small muted">WINNER</div><div class="winner">${winners.map(w => esc(P(w.playerId).name)).join(' · ')}${winners.length > 1 ? ' (ชนะร่วม)' : ''}</div><div class="small muted">${tb}</div>
-      <div class="tscroll" style="margin-top:8px"><table class="sum"><tr><th>#</th><th class="nm">ชื่อ</th>${Array.from({ length: n }, (_, i) => `<th>R${i + 1}</th>`).join('')}<th class="tot">Total</th></tr>
-      ${st.standings.map(s => `<tr><td class="${s.rank === 1 ? 'first' : ''}">${s.rank}</td><td class="nm ${meCls(s.playerId)}">${esc(P(s.playerId).name)}${s.left ? ' <span class="chip">ออกแล้ว</span>' : ''}</td>${Array.from({ length: n }, (_, i) => {
+    const it = s => ({ rank: s.rank, pid: s.playerId, value: s.prizeTotal, sub: `ได้ที่ 1 × ${s.firstPlaces}${s.left ? ' · ออกแล้ว' : ''}` });
+    return `<div class="panel"><div class="center"><div class="winlbl">WINNER</div><div class="small muted">${tb}</div></div>
+      ${podium(S2.slice(0, 3).map(it), 'over')}${restList(S2.slice(3).map(it))}</div>
+      <div class="panel"><h2>Prize แต่ละรอบ</h2><div class="tscroll"><table class="sum"><tr><th>#</th><th class="nm">ชื่อ</th>${Array.from({ length: n }, (_, i) => `<th>R${i + 1}</th>`).join('')}<th class="tot">Total</th></tr>
+      ${S2.map(s => `<tr><td class="${medal(s.rank)}">${s.rank}</td><td class="nm">${nm(s.playerId)}</td>${Array.from({ length: n }, (_, i) => {
         const row = hs[i] && hs[i].rows.find(x => x.playerId === s.playerId);
-        return row ? `<td class="${row.rank === 1 ? 'first' : ''}">${row.prize}</td>` : '<td class="dash">–</td>';
+        return row ? `<td class="${medal(row.rank)}">${row.prize}</td>` : '<td class="dash">–</td>';
       }).join('')}<td class="tot">${s.prizeTotal}</td></tr>`).join('')}</table></div>
       <button class="ghost" style="width:100%;margin-top:12px" data-act="home">กลับหน้าแรก</button></div>`;
+  }
+
+  // ---------- RACE START: นับ 3-2-1 แล้วรถวิ่ง (v3) ----------
+  // เลนเริ่มเรียงตามที่นั่ง เริ่มจากที่นั่งเลขเดียวกับรอบ (Race 3 → 3,4,…,x,1,2) รถ Power สูงวิ่งเร็วกว่า
+  // คันที่ถึงเส้นชัยย้ายขึ้นไปอยู่ตามอันดับ ทุกคนเห็นภาพเดียวกันเพราะคำนวณจากเวลา server
+  const LANE_H = 66;
+  let run = null;
+  function finishTimes(rows) {
+    const RUN = CFG.RACE_RUN_SECONDS * 1000, gap = CFG.RACE_MIN_GAP_MS, n = rows.length;
+    const t = rows.map(row => RUN * (0.35 + 0.65 * (1 - (row.power - 1) / Math.max(1, CFG.POWER_MAX - 1))));
+    for (let i = 1; i < n; i++) t[i] = Math.max(t[i], t[i - 1] + gap);
+    if (t[n - 1] > RUN) { t[n - 1] = RUN; for (let i = n - 2; i >= 0; i--) t[i] = Math.min(t[i], t[i + 1] - gap); }
+    return t.map(v => Math.max(250, v));
+  }
+  function stopRun() { if (run && run.raf) cancelAnimationFrame(run.raf); run = null; }
+  function buildRun(st, key) {
+    stopRun();
+    const res = st.raceHistory[st.raceHistory.length - 1], x = st.x, r = st.race.no;
+    const rows = res.rows.slice().sort((a, b) => a.rank - b.rank);
+    const fin = finishTimes(rows);
+    const order = [];
+    for (let i = 0; i < x; i++) { const p = st.players.find(q => q.seat === (r - 1 + i) % x); if (p) order.push(p.id); }
+    const el = document.createElement('div'); el.className = 'run';
+    el.innerHTML = `<div class="runhead"><div class="rstart">RACE START</div><div class="rno">${of(r, x)}</div><div class="small muted js-runmsg">เปิดรถของทุกคนแล้ว · Power สูงถึงเส้นชัยก่อน</div></div>
+      <div class="lanes" style="height:${order.length * LANE_H}px"></div><div class="cd" aria-live="assertive"></div>`;
+    const lanesEl = el.querySelector('.lanes');
+    const lanes = order.map((pid, idx) => {
+      const ri = rows.findIndex(row => row.playerId === pid), row = rows[ri];
+      const lane = document.createElement('div'); lane.className = 'lane';
+      lane.style.transform = `translateY(${idx * LANE_H}px)`;
+      lane.innerHTML = `<div class="lw"><span class="pname ell">${nm(pid)}</span><span class="small muted">Power <b class="pw">${row.power}</b></span></div>
+        <div class="track"><div class="trail"></div><div class="finish"></div><div class="rcar"></div></div><div class="badge"></div>`;
+      lane.querySelector('.rcar').appendChild(CardKit.render(card(row.cardId)));
+      lanesEl.appendChild(lane);
+      return { pid, idx, rank: row.rank, fin: fin[ri], el: lane, car: lane.querySelector('.rcar'), trail: lane.querySelector('.trail'), badge: lane.querySelector('.badge'), track: lane.querySelector('.track'), done: false };
+    });
+    run = { key, el, lanes, startAt: st.race.runAt + CFG.RACE_COUNTDOWN_SECONDS * 1000, raf: null, cdText: null };
+  }
+  function tickRun() {
+    if (!run) return;
+    const now = Date.now() + S.offset, el = run.el, elapsed = now - run.startAt;
+    const cd = el.querySelector('.cd');
+    const txt = elapsed < 0 ? String(Math.ceil(-elapsed / 1000)) : elapsed < 700 ? 'GO!' : '';
+    if (txt !== run.cdText) { run.cdText = txt; cd.textContent = txt; cd.classList.remove('beat'); void cd.offsetWidth; if (txt) cd.classList.add('beat'); cd.hidden = !txt; }
+    const finished = run.lanes.filter(l => elapsed >= l.fin).sort((a, b) => a.rank - b.rank);
+    const waiting = run.lanes.filter(l => elapsed < l.fin).sort((a, b) => a.idx - b.idx);
+    finished.concat(waiting).forEach((l, slot) => { const y = `translateY(${slot * LANE_H}px)`; if (l.el.style.transform !== y) l.el.style.transform = y; });
+    for (const l of run.lanes) {
+      const p = Math.max(0, Math.min(1, elapsed / l.fin));
+      const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2; // ease-in-out
+      const max = Math.max(0, l.track.clientWidth - l.car.offsetWidth - 8);
+      l.car.style.transform = `translateX(${e * max}px)`;
+      l.trail.style.width = `${e * max + 12}px`;
+      if (p >= 1 && !l.done) { l.done = true; l.badge.textContent = l.rank; l.badge.className = 'badge on ' + medal(l.rank); l.el.classList.add('fin'); }
+    }
+    const msg = el.querySelector('.js-runmsg');
+    if (msg) msg.textContent = elapsed < 0 ? 'เปิดรถของทุกคนแล้ว · Power สูงถึงเส้นชัยก่อน' : finished.length < run.lanes.length ? 'กำลังแข่ง… อันดับขึ้นเมื่อถึงเส้นชัย' : 'เข้าเส้นชัยครบแล้ว!';
+  }
+  function loopRun() { if (!run) return; run.raf = requestAnimationFrame(() => { run.raf = null; tickRun(); loopRun(); }); }
+  function mountRun() {
+    const host = document.getElementById('runhost'), st = S.st;
+    if (!host || !st || st.phase !== 'raceRun' || !st.race || !st.race.runAt) { stopRun(); return; }
+    const key = st.code + ':' + st.race.no;
+    if (!run || run.key !== key) buildRun(st, key);
+    host.appendChild(run.el);
+    tickRun();
+    if (!run.raf) loopRun();
   }
 
   // ---------- กล่องผลที่ผ่านมา (L5: เปิดดูผลประมูลได้ทุกเฟส) ----------
@@ -365,6 +475,7 @@
     else html += S.cardsReady ? viewGame(st) : '<div class="panel muted">กำลังโหลดการ์ด…</div>';
     app.innerHTML = html;
     placeCards();
+    mountRun();
     if (f && document.getElementById(f)) {
       const el = document.getElementById(f); el.focus();
       try { if (sel != null && el.setSelectionRange && el.type !== 'number') el.setSelectionRange(sel, sel); } catch (e) { /* */ }

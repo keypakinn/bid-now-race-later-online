@@ -34,6 +34,11 @@ function forceAuction(room, k, coinsBySeat) {
   coinsBySeat.forEach((c, s) => { seat(room, s).coins = c; });
   room.startAuction(k);
 }
+// จบ Race ปัจจุบันแล้วไปเฟสเลือกรถของ Race ถัดไป (ผ่าน raceRun → raceResult → ป้าย)
+function nextRace(room) {
+  const r0 = room.raceNo; let g = 0;
+  while (g++ < 20 && room.phase !== 'gameOver' && !(room.phase === 'racePick' && room.raceNo !== r0)) room.endPhaseNow();
+}
 function passAllAuctions(room) { // ผู้เล่นที่ถึงตา pass หมดจนจบ Phase 1
   let guard = 0;
   while (['auction', 'auctionResult'].includes(room.phase) && guard++ < 500) {
@@ -280,18 +285,19 @@ test('T-17 ผู้เล่นที่ออกใน Phase 2 ถูกสุ
   const C = room.players[2];
   room.leave(C.id);
   assert.ok(room.race.confirmed.has(C.id));
-  room.endPhaseNow(); room.endPhaseNow(); // เปิดผล → Race 2
+  nextRace(room);
+  assert.strictEqual(room.raceNo, 2);
   assert.ok(room.race.confirmed.has(C.id), 'Race 2 ต้องสุ่มให้ทันที');
   assert.ok(C.prizeTotal > 0);
 });
-test('ผู้เล่นออกในรอบประมูล: ถึงตาแล้วรอหมดเวลา = pass และยังได้รถ (R-7-05, R-7-10)', () => {
+test('ผู้เล่นออกในรอบประมูล: pass ทันทีทั้งตอนถึงตาและรอบถัดไป และยังได้รถ (v3, R-7-10)', () => {
   const { room } = started(3);
   forceAuction(room, 1, [10, 10, 10]);
-  const s1 = seat(room, 1);
+  const s1 = seat(room, 1), s2 = seat(room, 2);
   room.leave(s1.id);
-  assert.strictEqual(room.auction.turnId, s1.id);
-  room.endPhaseNow();
-  assert.strictEqual(room.auction.out.get(s1.id), 'timeout');
+  assert.strictEqual(room.auction.out.get(s1.id), 'left');
+  assert.strictEqual(room.auction.turnId, s2.id, 'ไม่ต้องรอ 60 วิ');
+  assert.deepStrictEqual(room.auction.log.map(e => e.kind + ':' + (e.reason || '')), ['open:', 'pass:left']);
   while (room.phase === 'auction') room.pass(room.auction.turnId);
   assert.strictEqual(s1.cars.length, 1);
 });
@@ -299,7 +305,11 @@ test('T-18 ทุกคน confirm ก่อนหมดเวลา → เป�
   const { room } = started(3);
   passAllAuctions(room);
   for (const p of room.players) { room.select(p.id, { cardId: p.cars[0] }); room.confirm(p.id); }
+  assert.strictEqual(room.phase, 'raceRun', 'ยืนยันครบ → RACE START ทันที');
+  assert.strictEqual(room.endsAt - room.now(), (CFG.RACE_COUNTDOWN_SECONDS + CFG.RACE_RUN_SECONDS) * 1000);
+  room.endPhaseNow();
   assert.strictEqual(room.phase, 'raceResult');
+  assert.strictEqual(room.endsAt - room.now(), CFG.RACE_RESULT_SECONDS * 1000);
   const rows = room.raceHistory[0].rows;
   assert.ok(rows[0].power > rows[1].power && rows[1].power > rows[2].power);
   assert.deepStrictEqual(rows.map(r => r.prize), room.raceHistory[0].prizes);
@@ -317,10 +327,11 @@ test('เลือกรถที่ไม่ใช่ของตัวเอ�
 test('T-19 Race สุดท้ายเลือกอัตโนมัติ ไม่มีช่วงเลือก (R-7-21)', () => {
   const { room } = started(2);
   passAllAuctions(room);
-  room.endPhaseNow(); room.endPhaseNow(); // Race 1 deadline → ผล → Race 2
+  nextRace(room); // Race 1 deadline → RACE START → ผล → Race 2
   assert.strictEqual(room.raceNo, 2); assert.strictEqual(room.phase, 'racePick');
   assert.ok(room.players.every(p => room.race.confirmed.has(p.id)));
   throwsCode(() => room.select(room.players[0].id, { cardId: room.players[0].cars[0] }), 'WRONG_PHASE');
+  room.endPhaseNow(); assert.strictEqual(room.phase, 'raceRun', 'Race สุดท้ายก็มี RACE START');
   room.endPhaseNow(); room.endPhaseNow();
   assert.strictEqual(room.phase, 'gameOver');
   assert.ok(room.players.every(p => p.cars.length === 0));
@@ -346,7 +357,7 @@ function scriptedGame(n, prizesByRace, rankOrderByRace) {
     });
     if (room.raceNo !== n) for (const p of room.players) room.confirm(p.id);
     else room.endPhaseNow();
-    room.endPhaseNow(); // RACE_RESULT → ถัดไป
+    room.endPhaseNow(); room.endPhaseNow(); // RACE START → แท่นรับรางวัล → ถัดไป
   }
   return room;
 }
@@ -427,18 +438,18 @@ test('T-30 เริ่มเกม: ป้าย PHASE 1 + AUCTION 1 รวม 
   assert.strictEqual(room.endsAt - room.now(), CFG.BID_TURN_SECONDS * 1000);
   assert.ok(opener);
 });
-test('T-31 ผลประมูลแสดง 5 วิ แล้ว Auction 2 มีป้าย AUCTION อย่างเดียว (L1, L5)', () => {
+test('T-31 ผลประมูลแสดงตาม AUCTION_RESULT_SECONDS แล้ว Auction 2 มีป้าย AUCTION อย่างเดียว (L1, L5)', () => {
   const { room, ps } = introRoom(3);
   room.start(ps[0].id); room.endPhaseNow();
   while (room.phase === 'auction') room.pass(room.auction.turnId);
   assert.strictEqual(room.phase, 'auctionResult');
-  assert.strictEqual(room.endsAt - room.now(), 5000);
+  assert.strictEqual(room.endsAt - room.now(), CFG.AUCTION_RESULT_SECONDS * 1000);
   room.endPhaseNow();
   assert.strictEqual(room.auctionNo, 2);
   assert.deepStrictEqual(room.intro.steps.map(s => s.kind + s.no), ['auction2']);
   assert.ok(room.getState(null).auctionHistory.length === 1, 'ผลประมูลรอบก่อนเปิดดูได้ทุกเฟส');
 });
-test('T-32 Race 1: ป้าย PHASE 2 + RACE 1, เลือกรถระหว่างป้ายไม่ได้, หลังป้ายนับ 30 วิ (L1)', () => {
+test('T-32 Race 1: ป้าย PHASE 2 + RACE 1, เลือกรถระหว่างป้ายไม่ได้, หลังป้ายนับเวลาเลือกรถ (L1)', () => {
   const { room, ps } = introRoom(3);
   room.start(ps[0].id);
   passAllAuctions(room);
@@ -450,7 +461,8 @@ test('T-32 Race 1: ป้าย PHASE 2 + RACE 1, เลือกรถระห
   assert.strictEqual(room.intro, null);
   assert.strictEqual(room.endsAt - room.now(), CFG.PICK_SECONDS * 1000);
   room.select(A.id, { cardId: A.cars[0] }); room.confirm(A.id);
-  room.endPhaseNow(); room.endPhaseNow(); // เปิดผล → Race 2 (ป้าย RACE 2)
+  room.endPhaseNow(); room.endPhaseNow(); room.endPhaseNow(); // หมดเวลา → RACE START → ผล → Race 2 (ป้าย RACE 2)
+  assert.strictEqual(room.raceNo, 2);
   assert.deepStrictEqual(room.intro.steps.map(s => s.kind + s.no), ['race2']);
 });
 test('T-33 ทุกคนออกยกเว้น 1 ระหว่างป้าย Race → ไม่เปิดผลก่อนป้ายจบ, Race สุดท้ายมีป้ายแล้วค่อยนับ 3 วิ (L1, R-7-21)', () => {
@@ -462,12 +474,12 @@ test('T-33 ทุกคนออกยกเว้น 1 ระหว่างป
   assert.ok(room.intro);
   room.endPhaseNow(); // ป้ายจบ → นับเวลาเลือก
   assert.strictEqual(room.phase, 'racePick');
-  room.endPhaseNow(); room.endPhaseNow(); // หมดเวลา → ผล → Race 2 (สุดท้าย)
+  room.endPhaseNow(); room.endPhaseNow(); room.endPhaseNow(); // หมดเวลา → RACE START → ผล → Race 2 (สุดท้าย)
   assert.strictEqual(room.raceNo, 2);
   assert.deepStrictEqual(room.intro.steps.map(s => s.kind + s.no), ['race2']);
   room.endPhaseNow();
   assert.strictEqual(room.endsAt - room.now(), CFG.LAST_RACE_REVEAL_SECONDS * 1000);
-  room.endPhaseNow(); room.endPhaseNow();
+  room.endPhaseNow(); room.endPhaseNow(); room.endPhaseNow();
   assert.strictEqual(room.phase, 'gameOver');
 });
 test('T-34 ประวัติ bid ทั้งรอบ (open/raise/pass/out) และ Coins ตอนเริ่มรอบ อยู่ใน state ของทุกคน (L4)', () => {
@@ -505,6 +517,39 @@ test('T-35 บอทสุ่มเล่นครบทั้งที่มี
     assert.ok(room.players.every(p => p.coins >= 0 && p.cars.length === 0));
     room.destroy();
   }
+});
+
+// ---------- v3: เวลา, ผู้เล่นที่ออก, RACE START ----------
+test('T-36 ค่าเวลาใน config ครบและเป็นจำนวนเต็ม ≥ 1 (config เวลา)', () => {
+  for (const k of ['INTRO_SECONDS', 'BID_TURN_SECONDS', 'AUCTION_RESULT_SECONDS', 'PICK_SECONDS', 'PICK_REMIND_SECONDS', 'WARNING_SECONDS',
+    'RACE_COUNTDOWN_SECONDS', 'RACE_RUN_SECONDS', 'RACE_RESULT_SECONDS', 'LAST_RACE_REVEAL_SECONDS']) {
+    assert.ok(Number.isInteger(CFG[k]) && CFG[k] >= 1, k);
+  }
+});
+test('T-37 ผู้เล่นที่ออกตั้งแต่รอบก่อน ถึงตาในรอบถัดไป → pass ทันที ไม่มีเวลานับ (v3)', () => {
+  const { room } = started(3);
+  forceAuction(room, 1, [10, 10, 10]);
+  const s2 = seat(room, 2);
+  room.leave(s2.id); // ยังไม่ถึงตา
+  room.pass(seat(room, 1).id); // s2 ถูกข้ามทันที → s0 ชนะ
+  assert.strictEqual(room.phase, 'auctionResult');
+  assert.strictEqual(room.auction.out.get(s2.id), 'left');
+  room.endPhaseNow(); // Auction 2 ผู้เปิด = ที่นั่ง 1
+  assert.strictEqual(room.auction.turnId, seat(room, 0).id, 'ข้ามที่นั่ง 2 ที่ออกแล้ว');
+});
+test('T-38 RACE START: ผลอยู่ใน state ตั้งแต่เริ่มวิ่ง มี runAt, เลือกรถไม่ได้ แล้วไปแท่นรับรางวัล (v3)', () => {
+  const { room } = started(3);
+  passAllAuctions(room);
+  room.endPhaseNow(); // หมดเวลา → สุ่มรถ → RACE START
+  const st = room.getState(null);
+  assert.strictEqual(st.phase, 'raceRun');
+  assert.ok(Math.abs(st.race.runAt - room.now()) < 1000);
+  assert.strictEqual(st.raceHistory.length, 1);
+  assert.strictEqual(st.raceHistory[0].rows.length, 3);
+  const A = room.players[0];
+  throwsCode(() => room.select(A.id, { cardId: A.cars[0] }), 'WRONG_PHASE');
+  room.endPhaseNow();
+  assert.strictEqual(room.getState(null).phase, 'raceResult');
 });
 
 // ---------- T-29 จำลองเกมเต็มด้วยบอทสุ่ม ----------

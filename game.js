@@ -160,6 +160,7 @@ class Room {
     this.logEvent('leave', { pid: p.id });
     if (['gameOver', 'cancelled'].includes(this.phase)) { this.bump(); return; }
     if (this.players.every(q => q.left)) { this.cancel('all_left'); return; } // R-12-08
+    if (this.phase === 'auction' && this.auction && this.auction.turnId === p.id) this.doPass(p.id, 'left'); // v3
     if (this.phase === 'racePick' && this.race && !this.race.confirmed.has(p.id)) {
       this.autoPick(p); // R-7-23
       this.checkRaceEarly();
@@ -248,6 +249,12 @@ class Room {
         a.out.set(next.id, 'no_money');
         a.log.push({ pid: next.id, kind: 'out', reason: 'no_money' });
         this.logEvent('auction:out', { pid: next.id, reason: 'no_money' });
+        continue;
+      }
+      if (next.left) { // ผู้เล่นที่กดออกจากเกมแล้ว pass ทันทีเมื่อถึงตา (v3)
+        a.out.set(next.id, 'left');
+        a.log.push({ pid: next.id, kind: 'pass', reason: 'left' });
+        this.logEvent('auction:pass', { pid: next.id, reason: 'left' });
         continue;
       }
       a.turnId = next.id;
@@ -407,10 +414,15 @@ class Room {
     this.raceHistory.push(result);
     this.logEvent('race:result', result);
     this.emit('race:result', result);
-    this.phase = 'raceResult';
-    this.setTimer(CFG.RACE_RESULT_SECONDS, () => {
-      if (r.no < this.x) this.startRace(r.no + 1);
-      else this.finishGame();
+    // v3: RACE START (นับ 3-2-1 แล้วรถวิ่ง) → แท่นรับรางวัล
+    this.phase = 'raceRun';
+    r.runAt = this.now();
+    this.setTimer(CFG.RACE_COUNTDOWN_SECONDS + CFG.RACE_RUN_SECONDS, () => {
+      this.phase = 'raceResult';
+      this.setTimer(CFG.RACE_RESULT_SECONDS, () => {
+        if (r.no < this.x) this.startRace(r.no + 1);
+        else this.finishGame();
+      });
     });
   }
 
@@ -467,7 +479,7 @@ class Room {
     const me = viewerId ? this.players.find(p => p.id === viewerId) : null;
     const a = this.auction, r = this.race;
     const inAuction = ['auction', 'auctionResult'].includes(this.phase) && a;
-    const inRace = ['racePick', 'raceResult'].includes(this.phase) && r;
+    const inRace = ['racePick', 'raceRun', 'raceResult'].includes(this.phase) && r;
     const st = {
       code: this.code, phase: this.phase, x: this.x, stateVersion: this.version, serverNow: this.now(), endsAt: this.endsAt,
       hostId: this.hostId, me: me ? me.id : null, myLeft: me ? me.left : false, spectators: this.spectators,
@@ -482,7 +494,7 @@ class Room {
         log: a.log.slice(), startCoins: a.startCoins
       } : null,
       intro: this.intro ? { steps: this.intro.steps.map(s => ({ ...s })) } : null,
-      race: inRace ? { no: r.no, prizes: r.prizes.slice(), confirmed: [...r.confirmed], last: r.no === this.x } : null,
+      race: inRace ? { no: r.no, prizes: r.prizes.slice(), confirmed: [...r.confirmed], last: r.no === this.x, runAt: r.runAt || null } : null,
       myPick: null, myConfirmed: false,
       auctionHistory: this.auctionHistory, raceHistory: this.raceHistory,
       standings: this.standings, tieBreak: this.tieBreak, cancelReason: this.cancelReason

@@ -3,6 +3,7 @@
   --ink:#F2EFE8; --mute:#9DA1A8; --orange:#FF7A00; --orange2:#9F5008;
   --green:#2FCB5A; --yellow:#FFC300; --red:#FF3B30;
   --accent:#FF7A00; --accentInk:#101114;
+  --gold:#FFC83D; --silver:#C9D1D9; --bronze:#D08A4E; --pick:#3CFF8F;
 }
 /* สีพื้นหลังแยกตาม Phase (layout v2): ฟ้า = Phase 1 ประมูล, แดงอิฐ = Phase 2 แข่งขัน */
 body.p1{--bg:#0A1222;--panel:#111C33;--panel2:#182847;--line:#26385C;--mute:#9AABC9;--accent:#5BA2FF;--accentInk:#0A1222}
@@ -30,7 +31,7 @@ h2{font-size:18px;margin:0 0 8px;font-weight:600}
 .stripe{height:6px;border-radius:3px;background:linear-gradient(90deg,var(--orange) 0 70%,var(--orange2) 70% 85%,#63360D 85%)}
 .top{display:flex;justify-content:space-between;align-items:center;gap:8px;position:sticky;top:0;z-index:5;background:var(--bg);padding:8px 0}
 .code{font-family:'Orbitron',sans-serif;letter-spacing:.15em;font-size:16px}
-.timer{font-family:'Orbitron',sans-serif;font-size:18px;color:var(--orange);min-width:3ch;text-align:right}
+.timer{font-family:'Orbitron',sans-serif;font-size:28px;line-height:1;color:var(--orange);min-width:3ch;text-align:right}
 .timer.low{color:var(--red)}
 .chip{display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:2px 8px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);white-space:nowrap}
 .chip.ok{border-color:var(--green);color:var(--green)}
@@ -92,7 +93,7 @@ button.pass{background:#C62828;color:#fff;font-weight:600}
 .g4{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
 .g4 .prize{min-width:0;padding:6px 4px}
 .cardbox.fill{width:100%;min-width:0}
-.w58{width:58px}
+.w58{width:58px}.w64{width:64px}.w50{width:50px}
 .got{text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .me{color:var(--orange)}
 .bidlog{background:var(--panel2);border-radius:12px;padding:10px 12px;margin-top:10px}
@@ -146,3 +147,63 @@ table.sum .tot{color:var(--orange);font-size:13px;text-align:right}
 .intro .sub{font-size:15px;color:#E5E1DA}
 @keyframes introIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.intro{animation:none}html,body{transition:none}}
+
+/* ---------- v3 ---------- */
+.me{color:inherit}
+.player.me .pname{color:var(--orange)}
+.you{display:inline-block;font-size:10px;font-weight:600;line-height:16px;padding:0 6px;border-radius:999px;background:var(--ink);color:var(--bg);vertical-align:middle;font-family:'Kanit',sans-serif}
+.m1{color:var(--gold)!important}.m2{color:var(--silver)!important}.m3{color:var(--bronze)!important}
+/* เลือกรถด้วยการแตะการ์ด: กรอบหนาสีเขียวมะนาวเฉพาะคันที่เลือก */
+.cardbox.pickable{cursor:pointer;-webkit-tap-highlight-color:transparent}
+.cardbox.pickable .cslot{border-radius:6px;transition:box-shadow .15s}
+.cardbox.pickable.sel .cslot{outline:none;box-shadow:0 0 0 4px var(--pick),0 0 18px 4px rgba(60,255,143,.55)}
+.cardbox.pickable.sel .cap{color:var(--pick);font-weight:600}
+.cardbox.pickable:focus-visible{outline:2px solid var(--ink);outline-offset:4px;border-radius:6px}
+/* ป๊อปอัปเตือนเวลา: ไม่บังการกด */
+.warn{position:fixed;left:0;right:0;top:28vh;z-index:25;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none}
+.warn[hidden]{display:none}
+.warn .wn{font-family:'Orbitron',sans-serif;font-weight:900;font-size:140px;line-height:1;color:var(--ink);text-shadow:0 0 30px #FF5436,0 2px 0 #000}
+.warn .wm{order:-1;font-size:15px;font-weight:600;padding:8px 16px;border-radius:999px;background:rgba(0,0,0,.72);color:#FFD6D2;border:1px solid #FF5436}
+.beat{animation:beat 1s ease-out}
+@keyframes beat{0%{transform:scale(1.25);opacity:1}100%{transform:scale(.92);opacity:.85}}
+/* RACE START */
+.runpanel{position:relative;overflow:hidden}
+.runhead{text-align:center;margin-bottom:10px}
+.rstart{font-family:'Orbitron',sans-serif;font-weight:900;font-size:clamp(26px,9vw,34px);color:var(--accent);letter-spacing:.04em}
+.rno{font-family:'Orbitron',sans-serif;font-weight:900;font-size:22px}
+.lanes{position:relative}
+.lane{position:absolute;left:0;right:0;top:0;height:60px;display:flex;align-items:center;gap:8px;transition:transform .45s ease}
+.lane .lw{width:72px;flex:none;display:flex;flex-direction:column;min-width:0}
+.lane .lw .pname{font-size:14px}
+.track{flex:1;position:relative;height:56px;background:var(--bg);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.track:before{content:'';position:absolute;left:8px;right:8px;top:50%;border-top:1px dashed var(--line)}
+.trail{position:absolute;left:0;top:0;bottom:0;width:0;background:linear-gradient(90deg,transparent,rgba(255,84,54,.3))}
+.finish{position:absolute;right:0;top:0;bottom:0;width:6px;background:repeating-linear-gradient(0deg,#fff 0 6px,#111 6px 12px)}
+.rcar{position:absolute;left:4px;top:4px;width:32px;will-change:transform}
+.badge{width:30px;height:30px;flex:none;border-radius:50%;border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;font-family:'Orbitron',sans-serif;font-weight:900;font-size:14px}
+.badge.on{border:0;background:var(--panel2);color:var(--ink)}
+.badge.on.m1{background:var(--gold);color:#1A0B09!important}.badge.on.m2{background:var(--silver);color:#1A0B09!important}.badge.on.m3{background:var(--bronze);color:#1A0B09!important}
+.lane.fin .badge{animation:beat .6s ease-out}
+.cd{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Orbitron',sans-serif;font-weight:900;font-size:150px;color:var(--ink);text-shadow:0 0 30px #FF5436;background:rgba(34,9,6,.45);pointer-events:none}
+.cd[hidden]{display:none}
+/* แท่นรับรางวัล */
+.podium{display:flex;align-items:flex-end;gap:6px;padding:8px 2px 0}
+.pcol{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px}
+.pcol .pname{max-width:100%;font-weight:700;font-size:15px}
+.pcol.r1 .pname{font-size:18px}
+.psub{max-width:100%;font-size:11px;color:var(--mute);text-align:center}
+.crown{width:30px;height:21px}.pcol.r1 .crown{width:42px;height:30px}
+.crown.m1{fill:var(--gold)}.crown.m2{fill:var(--silver)}.crown.m3{fill:var(--bronze)}
+.step{width:100%;border-radius:10px 10px 0 0;display:flex;flex-direction:column;align-items:center;padding-top:6px;margin-top:2px;color:#1A0B09}
+.step.m1{background:linear-gradient(180deg,var(--gold),#b8902a);height:120px;color:#1A0B09!important}
+.step.m2{background:linear-gradient(180deg,var(--silver),#8c949c);height:88px;color:#1A0B09!important}
+.step.m3{background:linear-gradient(180deg,var(--bronze),#8f5c31);height:64px;color:#1A0B09!important}
+.prk{font-family:'Orbitron',sans-serif;font-weight:900;line-height:1;font-size:28px}
+.r1 .prk{font-size:48px}.r2 .prk{font-size:36px}
+.pval{font-family:'Orbitron',sans-serif;font-weight:900;font-size:12px;margin-top:4px}.r1 .pval{font-size:16px}
+.rest{margin-top:8px}
+.rrow{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--line);opacity:.75;font-size:14px;min-width:0}
+.rrow .rk{width:24px;flex:none;text-align:center;font-family:'Orbitron',sans-serif;font-weight:900;font-size:16px;color:var(--mute)}
+.rrow .rv{font-family:'Orbitron',sans-serif;font-size:13px;color:var(--mute)}
+.winlbl{font-family:'Orbitron',sans-serif;font-size:13px;letter-spacing:.3em;color:var(--gold)}
+@media (prefers-reduced-motion:reduce){.lane{transition:none}.beat,.lane.fin .badge{animation:none}}
