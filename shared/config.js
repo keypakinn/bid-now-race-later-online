@@ -39,6 +39,7 @@
   return Object.freeze(Object.assign({}, TIME, {
     PLAYERS_MIN: 2,
     PLAYERS_MAX: 7,
+    ROUNDS_MIN: 2, // จำนวนรอบต่ำสุดที่เจ้าของห้องตั้งได้ (สูงสุด = จำนวนรถ ÷ จำนวนผู้เล่น)
     CAR_POOL_SIZE: 50,
     POWER_MIN: 1,
     POWER_MAX: 50,

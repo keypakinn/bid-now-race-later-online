@@ -38,12 +38,10 @@ const io = new Server(server, { maxHttpBufferSize: 1e5 });
 const rooms = new Map();        // code -> Room
 const sockRoom = new Map();     // socket.id -> { code, pid|null (ผู้ชม) }
 const roomSockets = new Map();  // code -> Set(socket.id)
-const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // A–Z ไม่มี I, O (R-12-09)
 
 function newCode() {
-  for (let t = 0; t < 1000; t++) {
-    let c = '';
-    for (let i = 0; i < 4; i++) c += LETTERS[crypto.randomInt(LETTERS.length)];
+  for (let t = 0; t < 1000; t++) { // v4: รหัสห้องเป็นตัวเลข 4 หลัก 1000–9999
+    const c = String(crypto.randomInt(1000, 10000));
     if (!rooms.has(c)) return c;
   }
   throw new GameError('ROOM_FULL', 'สร้างห้องไม่ได้ ลองใหม่');
@@ -181,6 +179,22 @@ io.on('connection', socket => {
       if (wasLobby) { detach(socket); return {}; }
     }
     detach(socket);
+    return {};
+  }));
+
+  // กลับสู่ Lobby หลังจบเกม (v4) — ผู้เล่นหรือผู้ชมในห้องกดได้ คนแรกที่กดพาห้องกลับห้องรอ
+  socket.on('lobby', (d, ack) => safe(ack, () => {
+    const info = sockRoom.get(socket.id);
+    if (!info) throw new GameError('ROOM_NOT_FOUND', 'ยังไม่ได้อยู่ในห้อง');
+    const room = rooms.get(info.code);
+    if (!room) throw new GameError('ROOM_NOT_FOUND', 'ไม่พบห้องนี้');
+    if (room.phase === 'lobby') return {};
+    const removed = new Set(room.backToLobby());
+    for (const sid of roomSockets.get(room.code) || []) { // ผู้เล่นที่ออกระหว่างเกม → ดูต่อในฐานะผู้ชม
+      const i = sockRoom.get(sid); if (i && i.pid && removed.has(i.pid)) i.pid = null;
+    }
+    updateSpectators(room);
+    scheduleBroadcast(room);
     return {};
   }));
 

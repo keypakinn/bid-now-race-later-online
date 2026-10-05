@@ -207,3 +207,17 @@ table.sum .tot{color:var(--orange);font-size:13px;text-align:right}
 .rrow .rv{font-family:'Orbitron',sans-serif;font-size:13px;color:var(--mute)}
 .winlbl{font-family:'Orbitron',sans-serif;font-size:13px;letter-spacing:.3em;color:var(--gold)}
 @media (prefers-reduced-motion:reduce){.lane{transition:none}.beat,.lane.fin .badge{animation:none}}
+
+/* ---------- v4 ---------- */
+.rounds-v{font-family:'Orbitron',sans-serif;font-size:22px;min-width:2.2ch;text-align:center;display:inline-block}
+.linkbtn{background:none;border:0;min-height:0;padding:0;color:var(--accent);text-decoration:underline;font-size:13px}
+.ptitle{font-size:14px;font-weight:600;margin:2px 0 8px}
+.tickets{gap:8px}
+.ticket{position:relative;display:flex;flex-direction:column;border:1.5px dashed #5A3A33;border-radius:12px;overflow:hidden;background:linear-gradient(180deg,#2E1712,#1F0E0B)}
+.ticket .tk-rk{background:#5A3A33;color:var(--ink);font-size:11px;font-weight:700;text-align:center;padding:2px 0}
+.ticket.m1{border-color:var(--gold)}.ticket.m1 .tk-rk{background:var(--gold);color:#1A0B09}
+.ticket.m2{border-color:var(--silver)}.ticket.m2 .tk-rk{background:var(--silver);color:#1A0B09}
+.ticket.m3{border-color:var(--bronze)}.ticket.m3 .tk-rk{background:var(--bronze);color:#1A0B09}
+.ticket .tk-rk.m1,.ticket .tk-rk.m2,.ticket .tk-rk.m3{color:#1A0B09!important}
+.tk-v{display:flex;align-items:center;justify-content:center;gap:5px;padding:7px 2px 8px;font-family:'Orbitron',sans-serif;font-weight:900;font-size:19px;color:var(--gold)}
+.coin{width:16px;height:16px;flex:none}.coin circle{fill:var(--gold);stroke:#B8902A;stroke-width:1.5}.coin circle.in{fill:none;stroke-width:1.2}

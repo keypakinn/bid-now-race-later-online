@@ -552,6 +552,73 @@ test('T-38 RACE START: ผลอยู่ใน state ตั้งแต่เ�
   assert.strictEqual(room.getState(null).phase, 'raceResult');
 });
 
+// ---------- v4: จำนวนรอบ, กลับสู่ Lobby ----------
+function playToEnd(room) { // เล่นจนจบด้วยการ pass/หมดเวลาทั้งหมด
+  let g = 0;
+  while (room.phase !== 'gameOver' && g++ < 5000) {
+    if (room.phase === 'auction' && room.auction.turnId) room.pass(room.auction.turnId);
+    else room.endPhaseNow();
+  }
+}
+test('T-39 จำนวนรอบ: ค่าเริ่มต้น = จำนวนผู้เล่น, ตั้งได้ 2…รถ÷คน, Coins ตามสัดส่วน, ผู้เปิดวนตามที่นั่ง (v4)', () => {
+  const { room, ps } = newRoom(4);
+  assert.strictEqual(room.getState(ps[0].id).rounds, 4);
+  assert.strictEqual(room.getState(ps[0].id).startCoins, 13);
+  assert.strictEqual(room.roundsMax(), 12);
+  throwsCode(() => room.setRounds(ps[1].id, { rounds: 5 }), 'NOT_HOST');
+  for (const bad of [1, 13, 2.5, '6']) throwsCode(() => room.setRounds(ps[0].id, { rounds: bad }), 'BAD_ROUNDS');
+  room.action(ps[0].id, { type: 'lobby:rounds', rounds: 10 });
+  assert.strictEqual(room.getState(null).rounds, 10);
+  assert.strictEqual(room.getState(null).startCoins, Math.ceil(13 * 10 / 4)); // 33
+  room.start(ps[0].id);
+  assert.strictEqual(room.x, 10); assert.strictEqual(room.n, 4);
+  assert.strictEqual(room.carSets.length, 10);
+  assert.ok(room.carSets.every(set => set.length === 4));
+  assert.strictEqual(new Set([].concat(...room.carSets)).size, 40);
+  assert.ok(room.players.every(p => p.coins === 33));
+  const openers = [];
+  let g = 0;
+  while (room.phase !== 'racePick' && g++ < 500) {
+    if (room.phase === 'auction' && room.auction.turnId) { if (!openers[room.auction.no - 1]) openers[room.auction.no - 1] = room.player(room.auction.openerId).seat; room.pass(room.auction.turnId); }
+    else room.endPhaseNow();
+  }
+  assert.deepStrictEqual(openers, [0, 1, 2, 3, 0, 1, 2, 3, 0, 1]);
+  assert.ok(room.players.every(p => p.cars.length === 10));
+  assert.strictEqual(room.race.prizes.length, 4, 'Prize ต่อ Race = จำนวนผู้เล่น');
+  playToEnd(room);
+  assert.strictEqual(room.raceHistory.length, 10);
+  assert.ok(room.players.every(p => p.cars.length === 0));
+});
+test('T-40 ตั้งรอบไว้เกินแล้วมีคนเข้าเพิ่ม → ลดเหลือสูงสุดที่ทำได้, null = กลับค่าเริ่มต้น (v4)', () => {
+  const { room, ps } = newRoom(2);
+  room.setRounds(ps[0].id, { rounds: 25 });
+  assert.strictEqual(room.getState(null).rounds, 25);
+  room.join('P3');
+  assert.strictEqual(room.getState(null).rounds, 16);
+  room.setRounds(ps[0].id, { rounds: null });
+  assert.strictEqual(room.getState(null).rounds, 3);
+  assert.ok(room.getState(null).roundsAuto);
+});
+test('T-41 กลับสู่ Lobby: เอาคนที่ออกระหว่างเกมออก, รีเซ็ตคะแนน, เล่นใหม่ได้ (v4)', () => {
+  const { room, ps } = started(3);
+  throwsCode(() => room.backToLobby(), 'WRONG_PHASE');
+  const quitter = room.players[1];
+  room.leave(quitter.id);
+  playToEnd(room);
+  const removed = room.backToLobby();
+  assert.deepStrictEqual(removed, [quitter.id]);
+  assert.strictEqual(room.phase, 'lobby');
+  assert.strictEqual(room.players.length, 2);
+  assert.ok(room.players.every(p => p.prizeTotal === 0 && p.cars.length === 0 && !p.left));
+  assert.deepStrictEqual(room.players.map(p => p.seat), [0, 1]);
+  assert.strictEqual(room.raceHistory.length, 0);
+  const host = room.players.find(p => p.id === room.hostId);
+  assert.ok(host);
+  room.start(host.id);
+  assert.strictEqual(room.phase, 'auction');
+  assert.ok(room.players.every(p => p.coins === CFG.STARTING_COINS[2]));
+});
+
 // ---------- T-29 จำลองเกมเต็มด้วยบอทสุ่ม ----------
 test('T-29 บอทสุ่ม x=2–7 อย่างละ 300 เกม: จบทุกเกม, Coins ≥ 0, ใช้รถครบ, Prize รวมตรง', () => {
   for (let n = 2; n <= 7; n++) {

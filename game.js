@@ -25,7 +25,8 @@ const MSG = {
   ALREADY_CONFIRMED: 'ยืนยันไปแล้ว',
   SPECTATOR_ONLY: 'ผู้ชมทำแบบนี้ไม่ได้',
   DUPLICATE_REQUEST: 'คำสั่งนี้ทำไปแล้ว',
-  UNKNOWN_PLAYER: 'ไม่พบผู้เล่น'
+  UNKNOWN_PLAYER: 'ไม่พบผู้เล่น',
+  BAD_ROUNDS: 'จำนวนรอบไม่ถูกต้อง'
 };
 const err = (code, extra) => new GameError(code, MSG[code] + (extra ? ` (${extra})` : ''));
 
@@ -65,12 +66,15 @@ class Room {
     this.version = 0;
     this.timer = null; this.endsAt = null; this.onTimer = null;
     this.spectators = 0;
+    this.roundsSet = null; // null = ใช้ค่าเริ่มต้น (= จำนวนผู้เล่น) — เจ้าของห้องตั้งได้ (v4)
     this.lastActivity = this.now();
     this.resetMatch();
   }
 
   resetMatch() {
-    this.x = 0;
+    this.x = 0; // จำนวนรอบ (Auction = Race = รถต่อคน)
+    this.n = 0; // จำนวนผู้เล่นตอนเริ่มเกม
+    this.startCoins = 0;
     this.carSets = [];
     this.auction = null; this.auctionNo = 0; this.auctionHistory = [];
     this.race = null; this.raceNo = 0; this.raceHistory = [];
@@ -191,22 +195,56 @@ class Room {
     p.reqIds.push(id); if (p.reqIds.length > 100) p.reqIds.shift();
   }
 
+  // ---------- จำนวนรอบ (v4) ----------
+  roundsMax(n = this.players.length) { return Math.floor(this.catalog.size / Math.max(1, n)); } // ใช้รถรวมไม่เกินจำนวนรถที่มี
+  effectiveRounds(n = this.players.length) {
+    const r = this.roundsSet != null ? this.roundsSet : Math.max(CFG.ROUNDS_MIN, n);
+    return Math.max(CFG.ROUNDS_MIN, Math.min(this.roundsMax(n), r));
+  }
+  // Coins เริ่มต้นตามสัดส่วน = ตาราง[n] × รอบ ÷ n (ปัดขึ้น) — รอบ = n ได้ค่าตามตารางเดิม
+  startCoinsFor(n, rounds) { const base = CFG.STARTING_COINS[n]; return base ? Math.ceil(base * rounds / n) : 0; }
+  setRounds(pid, data = {}) {
+    if (this.phase !== 'lobby') throw err('WRONG_PHASE');
+    if (pid !== this.hostId) throw err('NOT_HOST');
+    const v = data.rounds;
+    if (v === null) { this.roundsSet = null; this.bump(); return; } // กลับไปใช้ค่าเริ่มต้น
+    if (typeof v !== 'number' || !Number.isInteger(v) || v < CFG.ROUNDS_MIN || v > this.roundsMax()) throw err('BAD_ROUNDS', `${CFG.ROUNDS_MIN}–${this.roundsMax()} รอบ`);
+    this.roundsSet = v;
+    this.bump();
+  }
+  // กลับสู่ Lobby หลังจบเกม (v4): คนแรกที่กดพาห้องกลับห้องรอ ผู้เล่นที่ออกระหว่างเกมถูกเอาออก
+  backToLobby() {
+    if (!['gameOver', 'cancelled'].includes(this.phase)) throw err('WRONG_PHASE');
+    this.clearTimer();
+    const removed = this.players.filter(p => p.left).map(p => p.id);
+    this.players = this.players.filter(p => !p.left);
+    this.players.forEach((p, i) => { p.seat = i; p.coins = 0; p.cars = []; p.prizeTotal = 0; p.firstPlaces = 0; });
+    if (!this.players.some(p => p.id === this.hostId)) this.hostId = this.players[0] ? this.players[0].id : null;
+    this.resetMatch();
+    this.phase = 'lobby';
+    this.logEvent('lobby', { removed });
+    this.bump();
+    return removed;
+  }
+
   // ---------- setup (หัวข้อ 5) ----------
   start(pid) {
     if (this.phase !== 'lobby') throw err('WRONG_PHASE');
     if (pid !== this.hostId) throw err('NOT_HOST');
     const n = this.players.length;
     if (n < CFG.PLAYERS_MIN || n > CFG.PLAYERS_MAX) throw err('NOT_ENOUGH_PLAYERS'); // R-5-01
-    if (this.catalog.size < n * n) throw new GameError('CARDS_INVALID', 'ข้อมูลรถไม่พอเริ่มเกม');
+    const R = this.effectiveRounds(n);
+    if (this.catalog.size < n * R) throw new GameError('CARDS_INVALID', 'ข้อมูลรถไม่พอเริ่มเกม');
     this.resetMatch();
-    this.x = n;
+    this.x = R; this.n = n;
+    this.startCoins = this.startCoinsFor(n, R);
     this.players = shuffle(this.players, this.rand); // R-5-02
     this.players.forEach((p, i) => {
-      p.seat = i; p.coins = CFG.STARTING_COINS[n]; p.cars = []; p.prizeTotal = 0; p.firstPlaces = 0; p.left = false; // R-5-03
+      p.seat = i; p.coins = this.startCoins; p.cars = []; p.prizeTotal = 0; p.firstPlaces = 0; p.left = false; // R-5-03
     });
-    const pool = shuffle([...this.catalog.keys()], this.rand).slice(0, n * n); // R-5-04
-    for (let k = 0; k < n; k++) this.carSets.push(this.sortCars(pool.slice(k * n, k * n + n)));
-    this.logEvent('start', { x: n, seats: this.players.map(p => p.id), sets: this.carSets });
+    const pool = shuffle([...this.catalog.keys()], this.rand).slice(0, n * R); // R-5-04: R ชุด ชุดละ n คัน
+    for (let k = 0; k < R; k++) this.carSets.push(this.sortCars(pool.slice(k * n, k * n + n)));
+    this.logEvent('start', { rounds: R, players: n, coins: this.startCoins, seats: this.players.map(p => p.id), sets: this.carSets });
     this.startAuction(1); // R-5-06
     this.bump();
   }
@@ -215,7 +253,7 @@ class Room {
   startAuction(k) {
     this.phase = 'auction';
     this.auctionNo = k;
-    const opener = this.bySeat(k - 1); // R-7-01
+    const opener = this.bySeat((k - 1) % this.n); // R-7-01 วนตามที่นั่ง
     const openBid = opener.coins >= CFG.OPENING_BID ? CFG.OPENING_BID : 0; // R-7-02
     this.auction = {
       no: k, set: this.carSets[k - 1], openerId: opener.id, currentBid: openBid,
@@ -236,11 +274,11 @@ class Room {
   advanceTurn(fromSeat) {
     const a = this.auction;
     let seat = fromSeat;
-    for (let guard = 0; guard < this.x * 3; guard++) {
+    for (let guard = 0; guard < this.n * 3; guard++) {
       if (this.othersAllOut()) { this.finishAuction(); return; }
       let next = null;
-      for (let i = 1; i <= this.x; i++) {
-        const p = this.bySeat((seat + i) % this.x);
+      for (let i = 1; i <= this.n; i++) {
+        const p = this.bySeat((seat + i) % this.n);
         if (p.id !== a.highBidderId && !a.out.has(p.id)) { next = p; break; }
       }
       if (!next) { this.finishAuction(); return; }
@@ -313,7 +351,7 @@ class Room {
     winner.coins -= price; // R-7-09
     const allocation = {};
     a.set.forEach((cid, i) => { // R-7-10 (set เรียง power มาก→น้อยแล้ว)
-      const p = this.bySeat((winner.seat + i) % this.x);
+      const p = this.bySeat((winner.seat + i) % this.n);
       p.cars = this.sortCars([...p.cars, cid]);
       allocation[p.id] = cid;
     });
@@ -332,7 +370,7 @@ class Room {
   startRace(r) {
     this.phase = 'racePick';
     this.raceNo = r;
-    const prizes = Array.from({ length: this.x }, () => drawPrize(this.rand)).sort((a, b) => b - a); // R-7-20
+    const prizes = Array.from({ length: this.n }, () => drawPrize(this.rand)).sort((a, b) => b - a); // R-7-20
     this.race = { no: r, prizes, picks: new Map(), confirmed: new Set(), auto: new Set() };
     this.logEvent('race:prizes', { no: r, prizes });
     this.emit('race:prizes', { no: r, prizes });
@@ -450,7 +488,7 @@ class Room {
   telemetry() { // หัวข้อ 15
     const rankOf = new Map([].concat(...this.carSets).sort((a, b) => this.card(b).power - this.card(a).power).map((id, i) => [id, i + 1]));
     return {
-      room: this.code, x: this.x, seats: this.players.map(p => p.id),
+      room: this.code, x: this.x, n: this.n, seats: this.players.map(p => p.id),
       sets: this.carSets.map(s => s.map(id => ({ id, power: this.card(id).power, rank: rankOf.get(id) }))),
       auctions: this.auctionHistory, races: this.raceHistory.map(r => ({ no: r.no, prizes: r.prizes, rows: r.rows })),
       standings: this.standings, tieBreak: this.tieBreak,
@@ -466,6 +504,7 @@ class Room {
     if (p.left) throw err('SPECTATOR_ONLY');
     switch (data.type) {
       case 'game:start': return this.start(pid);
+      case 'lobby:rounds': return this.setRounds(pid, data);
       case 'auction:raise': return this.raise(pid, data);
       case 'auction:pass': return this.pass(pid, data);
       case 'race:select': return this.select(pid, data);
@@ -481,7 +520,10 @@ class Room {
     const inAuction = ['auction', 'auctionResult'].includes(this.phase) && a;
     const inRace = ['racePick', 'raceRun', 'raceResult'].includes(this.phase) && r;
     const st = {
-      code: this.code, phase: this.phase, x: this.x, stateVersion: this.version, serverNow: this.now(), endsAt: this.endsAt,
+      code: this.code, phase: this.phase, x: this.x, n: this.n || this.players.length,
+      rounds: this.phase === 'lobby' ? this.effectiveRounds() : this.x, roundsAuto: this.roundsSet == null, roundsMax: this.roundsMax(),
+      startCoins: this.phase === 'lobby' ? this.startCoinsFor(this.players.length, this.effectiveRounds()) : this.startCoins,
+      stateVersion: this.version, serverNow: this.now(), endsAt: this.endsAt,
       hostId: this.hostId, me: me ? me.id : null, myLeft: me ? me.left : false, spectators: this.spectators,
       players: this.players.map(p => ({
         id: p.id, name: p.name, seat: p.seat, connected: p.connected, left: p.left, coins: p.coins,
