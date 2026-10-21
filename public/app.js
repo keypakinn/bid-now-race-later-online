@@ -292,16 +292,6 @@
     return `<div class="grid g2">${rows.map(([pid, cid]) => cardBox(cid, where, 0, { cap: false,
       after: `<div class="got"><span class="small muted">ได้โดย</span> <b>${nm(pid)}</b></div>` })).join('')}</div>`;
   }
-  // ลำดับตา: เรียงตามที่นั่งเริ่มจากผู้เปิด ไฮไลต์คนที่ถึงตา ขีดฆ่าคนที่ออกจากรอบ (v5)
-  function turnOrder(st) {
-    const a = st.auction, n = st.n || st.players.length, o = P(a.openerId).seat;
-    const seq = [];
-    for (let i = 0; i < n; i++) { const p = st.players.find(q => q.seat === (o + i) % n); if (p) seq.push(p); }
-    return `<div class="torder" aria-label="ลำดับตา"><span class="small muted">ลำดับตา</span>${seq.map((p, i) => {
-      const cls = [p.id === a.turnId ? 'now' : '', a.out[p.id] ? 'out' : '', p.id === a.highBidderId ? 'hi' : ''].join(' ');
-      return `${i ? '<span class="arr">→</span>' : ''}<span class="tchip ${cls}">${nm(p.id)}${p.id === a.highBidderId ? ' <span class="hib">🪙' + a.currentBid + '</span>' : ''}</span>`;
-    }).join('')}</div>`;
-  }
   function viewAuction(st) {
     const a = st.auction;
     const head = `<div class="row"><h2 class="grow">Auction ${of(a.no, st.x)}</h2><span class="small muted">ผู้เปิด ${esc(P(a.openerId).name)}</span></div>`;
@@ -312,8 +302,12 @@
     const me = st.me ? P(st.me) : null;
     const myTurn = a.turnId && a.turnId === st.me && !st.myLeft;
     const outs = Object.keys(a.out).map(pid => esc(P(pid).name)).join(', ');
-    let html = `<div class="panel">${head}${turnOrder(st)}<div class="small muted">ผู้ชนะได้คันซ้ายบนสุด (Power สูงสุด)</div>
-      <div class="grid g3" style="margin-top:8px">${a.set.map(id => cardBox(id, 'set', 0)).join('')}</div>
+    // v6: ใต้การ์ดแต่ละใบบอกว่า "ถ้าจบตอนนี้" ใครได้คันนี้ — ผู้ถือ bid ได้คันแรก ที่เหลือแจกตามที่นั่งต่อจากเขา
+    const n = st.n || st.players.length, hs = P(a.highBidderId).seat;
+    const owner = i => st.players.find(q => q.seat === (hs + i) % n) || { id: '' };
+    let html = `<div class="panel">${head}<div class="small muted">ถ้าจบตอนนี้ — ชื่อใต้การ์ดคือคนที่จะได้คันนั้น</div>
+      <div class="grid g3" style="margin-top:8px">${a.set.map((id, i) => { const o = owner(i);
+        return cardBox(id, 'set', 0, { after: `<div class="owner ${a.out[o.id] ? 'out' : ''} ${i === 0 ? 'first' : ''}" data-flip="own:${a.no}:${esc(o.id)}" data-slot="${i}">→ ${nm(o.id)}${i === 0 ? ` <span class="hib">🪙${a.currentBid}</span>` : ''}</div>` }); }).join('')}</div>
       ${bidLog(st)}
       <div class="row small" style="margin-top:8px"><span class="grow muted">${outs ? `ออกจากรอบ: <span style="color:var(--ink)">${outs}</span>` : ''}</span><span>${a.turnId ? `ตาของ <b>${esc(P(a.turnId).name)}</b>` : ''}</span></div>`;
     if (myTurn) {
@@ -510,6 +504,21 @@
       ${main}${viewHistory(st)}${leaveBar}${step ? viewIntro(st, step) : ''}`;
   }
 
+  // เลื่อนชื่อจากตำแหน่งเดิมไปตำแหน่งใหม่ (เหมือนเลนรถสลับอันดับ)
+  function flip(before) {
+    if (!before.size || (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) return;
+    document.querySelectorAll('[data-flip]').forEach(el => {
+      const b0 = before.get(el.dataset.flip); if (!b0 || b0.slot === el.dataset.slot) return; // เลื่อนเฉพาะเมื่อเปลี่ยนคัน
+      const r0 = b0.r;
+      const r1 = el.getBoundingClientRect(), dx = r0.left - r1.left, dy = r0.top - r1.top;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+      el.style.transition = 'none'; el.style.transform = `translate(${dx}px, ${dy}px)`;
+      el.getBoundingClientRect();
+      el.style.transition = 'transform .55s cubic-bezier(.2,.8,.2,1)'; el.style.transform = '';
+      el.classList.add('moved'); setTimeout(() => el.classList.remove('moved'), 700);
+    });
+  }
+
   // ---------- render ----------
   function render() {
     const app = $('#app');
@@ -526,8 +535,11 @@
     }
     else if (st.phase === 'lobby') html += viewLobby(st);
     else html += S.cardsReady ? viewGame(st) : '<div class="panel muted">กำลังโหลดการ์ด…</div>';
+    const before = new Map(); // v6: จำตำแหน่งเดิมของชื่อที่ต้องเลื่อน (FLIP)
+    app.querySelectorAll('[data-flip]').forEach(el => before.set(el.dataset.flip, { r: el.getBoundingClientRect(), slot: el.dataset.slot }));
     app.innerHTML = html;
     placeCards();
+    flip(before);
     mountRun();
     if (f && document.getElementById(f)) {
       const el = document.getElementById(f); el.focus();

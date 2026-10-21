@@ -222,13 +222,10 @@ table.sum .tot{color:var(--orange);font-size:13px;text-align:right}
 .tk-v{display:flex;align-items:center;justify-content:center;gap:5px;padding:7px 2px 8px;font-family:'Orbitron',sans-serif;font-weight:900;font-size:19px;color:var(--gold)}
 .coin{width:16px;height:16px;flex:none}.coin circle{fill:var(--gold);stroke:#B8902A;stroke-width:1.5}.coin circle.in{fill:none;stroke-width:1.2}
 
-/* ---------- v5: ลำดับตา ---------- */
-.torder{display:flex;flex-wrap:wrap;align-items:center;gap:4px 4px;margin:4px 0 8px;font-size:13px}
-.torder .small{margin-right:4px}
-.torder .arr{color:var(--mute);font-size:11px}
-.tchip{padding:2px 8px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);white-space:nowrap}
-.tchip.now{background:var(--accent);color:var(--accentInk);border-color:var(--accent);font-weight:700}
-.tchip.now .you{background:var(--accentInk);color:var(--accent)}
-.tchip.out{opacity:.45;text-decoration:line-through}
-.tchip .hib{font-family:'Orbitron',sans-serif;font-size:11px;color:var(--orange)}
-.tchip.now .hib{color:var(--accentInk)}
+/* ---------- v6: เจ้าของการ์ด "ถ้าจบตอนนี้" ---------- */
+.owner{position:relative;z-index:2;text-align:center;font-size:13px;font-weight:600;padding:2px 4px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;will-change:transform}
+.owner.first{background:var(--accent);color:var(--accentInk);border-color:var(--accent)}
+.owner.first .you{background:var(--accentInk);color:var(--accent)}
+.owner.first .hib{font-family:'Orbitron',sans-serif;font-size:11px}
+.owner.out{opacity:.5}
+.owner.moved{box-shadow:0 0 0 2px var(--gold)}
