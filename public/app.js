@@ -292,6 +292,16 @@
     return `<div class="grid g2">${rows.map(([pid, cid]) => cardBox(cid, where, 0, { cap: false,
       after: `<div class="got"><span class="small muted">ได้โดย</span> <b>${nm(pid)}</b></div>` })).join('')}</div>`;
   }
+  // ลำดับตา: เรียงตามที่นั่งเริ่มจากผู้เปิด ไฮไลต์คนที่ถึงตา ขีดฆ่าคนที่ออกจากรอบ (v5)
+  function turnOrder(st) {
+    const a = st.auction, n = st.n || st.players.length, o = P(a.openerId).seat;
+    const seq = [];
+    for (let i = 0; i < n; i++) { const p = st.players.find(q => q.seat === (o + i) % n); if (p) seq.push(p); }
+    return `<div class="torder" aria-label="ลำดับตา"><span class="small muted">ลำดับตา</span>${seq.map((p, i) => {
+      const cls = [p.id === a.turnId ? 'now' : '', a.out[p.id] ? 'out' : '', p.id === a.highBidderId ? 'hi' : ''].join(' ');
+      return `${i ? '<span class="arr">→</span>' : ''}<span class="tchip ${cls}">${nm(p.id)}${p.id === a.highBidderId ? ' <span class="hib">🪙' + a.currentBid + '</span>' : ''}</span>`;
+    }).join('')}</div>`;
+  }
   function viewAuction(st) {
     const a = st.auction;
     const head = `<div class="row"><h2 class="grow">Auction ${of(a.no, st.x)}</h2><span class="small muted">ผู้เปิด ${esc(P(a.openerId).name)}</span></div>`;
@@ -302,7 +312,7 @@
     const me = st.me ? P(st.me) : null;
     const myTurn = a.turnId && a.turnId === st.me && !st.myLeft;
     const outs = Object.keys(a.out).map(pid => esc(P(pid).name)).join(', ');
-    let html = `<div class="panel">${head}<div class="small muted">ผู้ชนะได้คันซ้ายบนสุด (Power สูงสุด)</div>
+    let html = `<div class="panel">${head}${turnOrder(st)}<div class="small muted">ผู้ชนะได้คันซ้ายบนสุด (Power สูงสุด)</div>
       <div class="grid g3" style="margin-top:8px">${a.set.map(id => cardBox(id, 'set', 0)).join('')}</div>
       ${bidLog(st)}
       <div class="row small" style="margin-top:8px"><span class="grow muted">${outs ? `ออกจากรอบ: <span style="color:var(--ink)">${outs}</span>` : ''}</span><span>${a.turnId ? `ตาของ <b>${esc(P(a.turnId).name)}</b>` : ''}</span></div>`;
