@@ -7,16 +7,21 @@ const express = require('express');
 const { Server } = require('socket.io');
 const { Room, GameError } = require('./game');
 const { loadCards } = require('./server/cards');
+const { loadModels } = require('./server/models');
 const CFG = require('./shared/config');
 
 const PORT = Number(process.env.PORT) || 3000;
 const CARDS_DIR = path.join(__dirname, 'cards');
+const MODELS_DIR = path.join(__dirname, 'models');
 
 process.on('uncaughtException', e => console.error('uncaughtException:', e && e.stack || e));
 process.on('unhandledRejection', e => console.error('unhandledRejection:', e && e.stack || e));
 
 // ---------- การ์ด (อ่านครั้งเดียวตอนเริ่ม) ----------
 const CARDS = loadCards(CARDS_DIR);
+// ---------- โมเดลรถ 3D (อ่านครั้งเดียวตอนเริ่ม — R-4.2-01) ----------
+const MODELS = loadModels(MODELS_DIR, m => console.warn(m));
+console.log(`models: ${MODELS.models.length} แบบ (ข้าม ${MODELS.skipped}), version ${MODELS.version}`);
 console.log(`cards: ${CARDS.cards.length} คัน (default ${CARDS.defaults}, ข้าม ${CARDS.skipped}), ภาพ ${CARDS.artFiles.length} ไฟล์, version ${CARDS.api.version}`);
 
 const app = express();
@@ -28,6 +33,16 @@ app.get('/api/cards', (req, res) => {
   res.set('Cache-Control', 'no-cache');
   res.json({ ...CARDS.api, warnings: CARDS.warnings.length, defaults: CARDS.defaults });
 });
+app.use('/models', express.static(MODELS_DIR, { maxAge: '7d', fallthrough: true })); // R-12-14
+app.get('/api/models', (req, res) => { res.set('Cache-Control', 'no-cache'); res.json(MODELS.api); });
+// เสียง: ไฟล์ใน public/sounds (ไม่สนนามสกุล) — ไม่มีไฟล์ = ใช้เสียงสังเคราะห์ (หัวข้อ 10.10)
+const SOUNDS = (() => {
+  const out = {};
+  try { for (const f of require('fs').readdirSync(path.join(__dirname, 'public', 'sounds'))) { const m = /^([a-zA-Z0-9-]+)\.(mp3|ogg|wav|m4a)$/i.exec(f); if (m && !out[m[1]]) out[m[1]] = f; } } catch (e) { /* ไม่มีโฟลเดอร์ */ }
+  return out;
+})();
+console.log(`sounds: ${Object.keys(SOUNDS).length} ไฟล์`);
+app.get('/api/sounds', (req, res) => { res.set('Cache-Control', 'no-cache'); res.json({ files: SOUNDS }); });
 app.get('/preview', (req, res) => res.sendFile(path.join(__dirname, 'public', 'preview.html')));
 app.get('/healthz', (req, res) => res.type('text').send('ok'));
 
@@ -67,6 +82,7 @@ function makeRoom() {
   const code = newCode();
   const room = new Room(code, {
     cards: CARDS.cards,
+    models: MODELS.models.map(m => m.id),
     onChange: r => scheduleBroadcast(r),
     // event สาธารณะเท่านั้น (หัวข้อ 11)
     onEvent: (r, type, data) => io.to('room:' + r.code).emit(type, data),
@@ -204,7 +220,15 @@ io.on('connection', socket => {
     if (!info.pid) throw new GameError('SPECTATOR_ONLY', 'ผู้ชมทำแบบนี้ไม่ได้');
     const room = rooms.get(info.code);
     if (!room) throw new GameError('ROOM_NOT_FOUND', 'ไม่พบห้องนี้');
-    room.action(info.pid, d);
+    const res = room.action(info.pid, d) || {};
+    if (res.kicked) { // R-7-74: แจ้งคนที่ถูกเตะ · lobby = ออกจากห้อง · ระหว่างเกม = ดูต่อในฐานะผู้ชม
+      for (const sid of [...(roomSockets.get(room.code) || [])]) {
+        const i = sockRoom.get(sid), s2 = io.sockets.sockets.get(sid);
+        if (!i || i.pid !== res.kicked || !s2) continue;
+        s2.emit('kicked', { lobby: room.phase === 'lobby' });
+        if (room.phase === 'lobby') detach(s2);
+      }
+    }
     return {};
   }));
 
@@ -216,7 +240,7 @@ setInterval(() => {
   try {
     const now = Date.now();
     for (const room of rooms.values()) {
-      room.transferHostIfNeeded(60000);
+      room.transferHostIfNeeded(60000, 15000);
       if (room.phase === 'lobby') { // ลบคนที่หลุดใน lobby เกิน 2 นาที
         for (const p of room.players.slice()) if (!p.connected && p.disconnectedAt && now - p.disconnectedAt > 120000) room.leave(p.id);
       }

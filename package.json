@@ -1,7 +1,7 @@
 {
   "name": "bid-now-race-later",
-  "version": "1.0.0",
-  "description": "บิดไปสมาชิก (Bid Now, Race Later) — เกมประมูลรถแล้วแข่ง 2–7 คน เล่นออนไลน์บนมือถือ",
+  "version": "2.0.0",
+  "description": "บิดไปสมาชิก (Bid Now, Race Later) — เกมประมูลรถแล้วแข่ง 3D 2–7 คน 3 โหมด เล่นออนไลน์บนมือถือ",
   "main": "server.js",
   "private": true,
   "scripts": {

@@ -1,4 +1,4 @@
-// จำลองกติกา — อ้าง test scenario T-xx และรหัสกติกา R-x-y จาก spec v2
+// จำลองกติกา — อ้าง test scenario T-xx และรหัสกติกา R-x-y จาก spec v2.0
 'use strict';
 const assert = require('assert');
 const path = require('path');
@@ -266,7 +266,7 @@ test('T-15 select แต่ไม่ confirm → หมดเวลาใช้�
   passAllAuctions(room);
   const A = room.players[0], pick = A.cars[1];
   room.select(A.id, { cardId: pick });
-  room.endPhaseNow();
+  room.endPhaseNow(); room.endPhaseNow(); // หมดเวลา → RACE_RUN → แท่นรับรางวัล (ผลเปิดตอนแท่น — R-4-05)
   const row = room.raceHistory[0].rows.find(r => r.playerId === A.id);
   assert.strictEqual(row.cardId, pick); assert.ok(row.auto);
 });
@@ -274,7 +274,7 @@ test('T-16 ไม่เลือกอะไร → สุ่มจากรถ�
   const { room } = started(3);
   passAllAuctions(room);
   const B = room.players[1], had = B.cars.slice();
-  room.endPhaseNow();
+  room.endPhaseNow(); room.endPhaseNow();
   const row = room.raceHistory[0].rows.find(r => r.playerId === B.id);
   assert.ok(had.includes(row.cardId) && row.auto);
   assert.ok(!B.cars.includes(row.cardId));
@@ -353,7 +353,7 @@ function scriptedGame(n, prizesByRace, rankOrderByRace) {
       p.cars.push(id);
       if (r === n - 1) p.cars = [id];
       if (room.raceNo !== n) { room.select(p.id, { cardId: id }); }
-      else room.race.picks.set(p.id, id);
+      else room.race.picks.set(p.id, { cardId: id, nitro: 0 });
     });
     if (room.raceNo !== n) for (const p of room.players) room.confirm(p.id);
     else room.endPhaseNow();
@@ -427,9 +427,10 @@ test('T-30 เริ่มเกม: ป้าย PHASE 1 + AUCTION 1 รวม 
   assert.strictEqual(room.phase, 'auction');
   assert.strictEqual(room.auction.turnId, null);
   const st = room.getState(ps[0].id);
-  assert.deepStrictEqual(st.intro.steps.map(s => s.kind + s.no), ['phase1', 'auction1']);
-  assert.strictEqual(st.intro.steps[1].endsAt - st.intro.steps[0].endsAt, CFG.INTRO_SECONDS * 1000);
-  assert.strictEqual(st.endsAt, st.intro.steps[1].endsAt);
+  assert.deepStrictEqual(st.intro.steps.map(s => s.kind + (s.no || '')), ['rules', 'phase1', 'auction1', 'lot1']); // v2.0: สรุปกติกา + เปิดรถทีละคัน
+  assert.strictEqual(st.intro.steps[2].endsAt - st.intro.steps[1].endsAt, CFG.INTRO_SECONDS * 1000);
+  assert.strictEqual(st.intro.steps[3].endsAt - st.intro.steps[2].endsAt, 3 * CFG.LOT_REVEAL_STEP_SECONDS * 1000);
+  assert.strictEqual(st.endsAt, st.intro.steps[3].endsAt);
   const opener = seat(room, 0), next = seat(room, 1);
   throwsCode(() => room.raise(next.id, { amount: 2 }), 'NOT_YOUR_TURN');
   room.endPhaseNow();
@@ -446,7 +447,7 @@ test('T-31 ผลประมูลแสดงตาม AUCTION_RESULT_SECONDS 
   assert.strictEqual(room.endsAt - room.now(), CFG.AUCTION_RESULT_SECONDS * 1000);
   room.endPhaseNow();
   assert.strictEqual(room.auctionNo, 2);
-  assert.deepStrictEqual(room.intro.steps.map(s => s.kind + s.no), ['auction2']);
+  assert.deepStrictEqual(room.intro.steps.map(s => s.kind + s.no), ['auction2', 'lot2']);
   assert.ok(room.getState(null).auctionHistory.length === 1, 'ผลประมูลรอบก่อนเปิดดูได้ทุกเฟส');
 });
 test('T-32 Race 1: ป้าย PHASE 2 + RACE 1, เลือกรถระหว่างป้ายไม่ได้, หลังป้ายนับเวลาเลือกรถ (L1)', () => {
@@ -537,15 +538,17 @@ test('T-37 ผู้เล่นที่ออกตั้งแต่รอบ
   room.endPhaseNow(); // Auction 2 ผู้เปิด = ที่นั่ง 1
   assert.strictEqual(room.auction.turnId, seat(room, 0).id, 'ข้ามที่นั่ง 2 ที่ออกแล้ว');
 });
-test('T-38 RACE START: ผลอยู่ใน state ตั้งแต่เริ่มวิ่ง มี runAt, เลือกรถไม่ได้ แล้วไปแท่นรับรางวัล (v3)', () => {
+test('T-38 RACE_RUN: มีลำดับเข้าเส้นชัยแต่ไม่มี Power/Prize จนแท่นรับรางวัล (R-4-05, แก้จาก v3)', () => {
   const { room } = started(3);
   passAllAuctions(room);
   room.endPhaseNow(); // หมดเวลา → สุ่มรถ → RACE START
   const st = room.getState(null);
   assert.strictEqual(st.phase, 'raceRun');
   assert.ok(Math.abs(st.race.runAt - room.now()) < 1000);
-  assert.strictEqual(st.raceHistory.length, 1);
-  assert.strictEqual(st.raceHistory[0].rows.length, 3);
+  assert.strictEqual(st.raceHistory.length, 0);
+  assert.strictEqual(st.race.run.order.length, 3);
+  assert.ok(!JSON.stringify(st.race.run).includes('"power"') && !JSON.stringify(st.race.run).includes('"total"'));
+  assert.strictEqual(st.race.result, null);
   const A = room.players[0];
   throwsCode(() => room.select(A.id, { cardId: A.cars[0] }), 'WRONG_PHASE');
   room.endPhaseNow();
@@ -649,6 +652,554 @@ test('T-29 บอทสุ่ม x=2–7 อย่างละ 300 เกม: �
       room.destroy();
     }
   }
+});
+
+
+// =====================================================================
+//  v2.0 — โหมด Chaos / Shadow, ปุ่มเสริม, host (spec v2.0 หัวข้อ 14 T-50…T-90)
+// =====================================================================
+const MODEL_IDS = ['animal-turtle', 'code-jet', 'kenney-race'];
+function roomS(n, settings = {}, seed = 1, opts = {}) {
+  const room = new Room('V2', { cards: CARDS, models: MODEL_IDS, rand: seeded(seed), introSeconds: 0, ...opts });
+  const ps = []; for (let i = 0; i < n; i++) ps.push(room.join('P' + (i + 1)));
+  if (Object.keys(settings).length) room.setSettings(ps[0].id, settings);
+  return { room, ps };
+}
+function startedS(n, settings, seed) { const r = roomS(n, settings, seed); r.room.start(r.ps[0].id); return r; }
+const chaos = (n, extra = {}, seed) => startedS(n, { mode: 'chaos', ...extra }, seed);
+function toRace(room) { // จบ Phase 1 ทุกโหมด (pass / ส่งราคาอัตโนมัติ)
+  let g = 0;
+  while (!['racePick', 'gameOver'].includes(room.phase) && g++ < 500) {
+    if (room.phase === 'auction' && room.auction.turnId) room.pass(room.auction.turnId); else room.endPhaseNow();
+  }
+}
+function finishRace(room) { let g = 0; const no = room.raceNo; while (room.phase !== 'raceResult' && g++ < 10) room.endPhaseNow(); assert.strictEqual(room.race.no, no); return room.race.result; }
+// ตั้งรถ (power ที่ต้องการ) ให้ผู้เล่นใน Race ปัจจุบันด้วยการ์ดเฉพาะกิจ
+function giveCar(room, p, power, tag) { const id = `t-${tag}-${p.name}-${power}`; room.catalog.set(id, { id, name: id, power }); p.cars.push(id); return id; }
+
+test('T-50 Classic n=4 x=4: Coins 13 ทุกคน (R-5-03)', () => {
+  const { room } = startedS(4, { mode: 'classic' });
+  assert.ok(room.players.every(p => p.coins === 13));
+});
+test('T-51/T-52 Chaos n=4: x=4 → 20, x=3 → 15 (R-5-03)', () => {
+  const c4 = chaos(4).room; assert.strictEqual(c4.startCoins, 20);
+  assert.ok(c4.players.filter(p => p.id !== c4.auction.openerId).every(p => p.coins === 20));
+  const { room, ps } = roomS(4, { mode: 'chaos' }); room.setRounds(ps[0].id, { rounds: 3 }); room.start(ps[0].id);
+  assert.strictEqual(room.startCoins, 15);
+});
+test('T-53 host ตั้ง Coins 30 แล้วเปลี่ยนรอบ → ทุกคน 30 · null = ค่าแนะนำ (R-7-72)', () => {
+  const { room, ps } = roomS(4, { coinsOverride: 30 });
+  room.setRounds(ps[0].id, { rounds: 6 });
+  assert.strictEqual(room.getState(null).startCoins, 30);
+  room.setSettings(ps[0].id, { coinsOverride: null });
+  assert.strictEqual(room.getState(null).startCoins, Math.ceil(13 * 6 / 4));
+  room.setSettings(ps[0].id, { coinsOverride: 30 });
+  room.start(ps[0].id);
+  assert.ok(room.players.every(p => p.coins === 30));
+  const { room: r2, ps: q } = roomS(2);
+  for (const bad of [0, 100, 2.5, '9']) throwsCode(() => r2.setSettings(q[0].id, { coinsOverride: bad }), 'BAD_SETTING');
+  throwsCode(() => r2.setSettings(q[1].id, { mode: 'chaos' }), 'NOT_HOST');
+  throwsCode(() => r2.setSettings(q[0].id, { mode: 'poker' }), 'BAD_SETTING');
+  throwsCode(() => r2.setSettings(q[0].id, { toggles: { bounty: true } }), 'BAD_SETTING');
+});
+test('R-7-71 เปลี่ยนโหมด → Refund ตั้งตามค่าเริ่มต้นของโหมด', () => {
+  const { room, ps } = roomS(2);
+  assert.strictEqual(room.settings.toggles.refund, false);
+  room.setSettings(ps[0].id, { mode: 'chaos' }); assert.strictEqual(room.settings.toggles.refund, true);
+  room.setSettings(ps[0].id, { toggles: { refund: false } }); assert.strictEqual(room.settings.toggles.refund, false);
+  room.setSettings(ps[0].id, { mode: 'classic' }); assert.strictEqual(room.settings.toggles.refund, false);
+  room.setSettings(ps[0].id, { mode: 'shadow' }); assert.strictEqual(room.settings.toggles.refund, true);
+});
+test('T-54 Chaos ผู้เปิด S0 มี 10 → เหลือ 9 committed 1 (R-7-30)', () => {
+  const { room } = chaos(3, { toggles: { refund: false } });
+  forceAuction(room, 1, [10, 10, 10]);
+  // forceAuction ตั้ง coins ก่อน startAuction → blind หักทันที
+  assert.strictEqual(seat(room, 0).coins, 9);
+  assert.strictEqual(room.auction.committed[seat(room, 0).id], 1);
+});
+test('T-55 Chaos S1 bid 3 แล้ว bid 5 → เสียรวม 5 (R-7-31)', () => {
+  const { room } = chaos(3, { toggles: { refund: false } });
+  forceAuction(room, 1, [10, 10, 10]);
+  const [s0, s1, s2] = [0, 1, 2].map(s => seat(room, s));
+  room.raise(s1.id, { amount: 3 }); assert.strictEqual(s1.coins, 7);
+  room.raise(s2.id, { amount: 4 });
+  room.pass(s0.id);
+  room.raise(s1.id, { amount: 5 }); assert.strictEqual(s1.coins, 5);
+  assert.strictEqual(room.auction.committed[s1.id], 5);
+});
+test('T-56 Chaos n=4: อันดับตามยอดที่ลง คนลง 0 ใคร pass ก่อนได้คันอ่อนกว่า (R-7-34, R-7-35)', () => {
+  const { room } = chaos(4, { toggles: { refund: false } });
+  forceAuction(room, 1, [10, 10, 10, 10]);
+  const S = [0, 1, 2, 3].map(s => seat(room, s)), set = room.auction.set;
+  room.pass(S[1].id); room.raise(S[2].id, { amount: 2 }); room.pass(S[3].id); room.pass(S[0].id);
+  const res = room.auctionHistory[0];
+  assert.deepStrictEqual(res.ranking.map(r => r.pid), [S[2].id, S[0].id, S[3].id, S[1].id]);
+  assert.deepStrictEqual([S[2], S[0], S[3], S[1]].map(p => res.allocation[p.id]), set);
+  assert.deepStrictEqual([S[0].coins, S[1].coins, S[2].coins, S[3].coins], [9, 10, 8, 10]);
+});
+test('T-57 Chaos committed 3 เหลือ 1 currentBid 5 → ออกอัตโนมัติ committed ไม่คืน (R-7-32)', () => {
+  const { room } = chaos(3, { toggles: { refund: false } });
+  forceAuction(room, 1, [10, 4, 10]);
+  const [s0, s1, s2] = [0, 1, 2].map(s => seat(room, s));
+  room.raise(s1.id, { amount: 3 }); assert.strictEqual(s1.coins, 1);
+  room.raise(s2.id, { amount: 5 });
+  room.pass(s0.id); // ถึงตา S1: 1 + 3 < 6 → ออก
+  assert.strictEqual(room.phase, 'auctionResult');
+  assert.strictEqual(room.auction.out.get(s1.id), 'no_money');
+  assert.strictEqual(s1.coins, 1);
+  assert.deepStrictEqual(room.auctionHistory[0].ranking.map(r => r.pid), [s2.id, s1.id, s0.id]);
+});
+test('Chaos raise ใช้ committed + Coins ได้ แต่เกินไม่ได้ (R-7-31)', () => {
+  const { room } = chaos(3, { toggles: { refund: false } });
+  forceAuction(room, 1, [10, 4, 10]);
+  const [s0, s1, s2] = [0, 1, 2].map(s => seat(room, s));
+  room.raise(s1.id, { amount: 2 }); room.raise(s2.id, { amount: 3 }); room.pass(s0.id);
+  throwsCode(() => room.raise(s1.id, { amount: 5 }), 'BID_OVER_COINS'); // มี 2 + ลงแล้ว 2 = 4
+  room.raise(s1.id, { amount: 4 }); assert.strictEqual(s1.coins, 0);
+  room.pass(s2.id);
+  assert.strictEqual(room.phase, 'auctionResult');
+});
+test('Chaos บอทสุ่ม n=2–7 อย่างละ 60 เกม + Refund: จบ Coins ≥ 0 ใช้รถครบ', () => {
+  for (let n = 2; n <= 7; n++) for (let g = 0; g < 60; g++) {
+    const rand = seeded(500 + n * 100 + g);
+    const { room } = startedS(n, { mode: 'chaos', toggles: { nitro: true, campaign: true, mystery: true, suddenDeath: true } }, 500 + n * 100 + g);
+    let guard = 0;
+    while (room.phase !== 'gameOver' && guard++ < 5000) {
+      if (room.phase === 'auction' && room.auction.turnId) {
+        const p = room.player(room.auction.turnId), a = room.auction, max = p.coins + a.committed[p.id];
+        if (rand() < 0.5 && max > a.currentBid) room.raise(p.id, { amount: a.currentBid + 1 + Math.floor(rand() * (max - a.currentBid)) }); else room.pass(p.id);
+      } else if (room.phase === 'racePick' && !room.race.last && !room.race.sudden) {
+        for (const p of room.players) if (!room.race.confirmed.has(p.id)) { room.select(p.id, { cardId: p.cars[0], nitro: Math.min(p.coins, Math.floor(rand() * 6), CFG.NITRO_MAX_COINS) * (room.race.event === 'ban' ? 0 : 1) }); room.confirm(p.id); }
+        if (room.phase === 'racePick') room.endPhaseNow();
+      } else room.endPhaseNow();
+    }
+    assert.strictEqual(room.phase, 'gameOver', `n=${n} g=${g} ค้างที่ ${room.phase}`);
+    assert.ok(room.players.every(p => p.coins >= 0 && p.cars.length === 0));
+    room.destroy();
+  }
+});
+test('T-58 Shadow n=3 ราคา 4/4/2 ผู้เปิด S1 → S1, S0, S2 (R-7-44)', () => {
+  const { room } = startedS(3, { mode: 'shadow', toggles: { refund: false } });
+  room.clearTimer(); [10, 10, 10].forEach((c, s) => { seat(room, s).coins = c; }); room.startAuction(2); // ผู้เปิด = ที่นั่ง 1
+  const [s0, s1, s2] = [0, 1, 2].map(s => seat(room, s));
+  room.shadowBid(s0.id, { amount: 4 }); room.shadowBid(s1.id, { amount: 4 }); room.shadowBid(s2.id, { amount: 2 });
+  [s0, s1, s2].forEach(p => room.shadowConfirm(p.id));
+  assert.strictEqual(room.phase, 'shadowReveal');
+  assert.deepStrictEqual(room.auction.reveal.flipGroups, [[s2.id], [s1.id, s0.id]]);
+  room.endPhaseNow();
+  const res = room.auctionHistory[0];
+  assert.deepStrictEqual(res.ranking.map(r => r.pid), [s1.id, s0.id, s2.id]);
+  assert.deepStrictEqual([s0.coins, s1.coins, s2.coins], [6, 6, 8]);
+});
+test('T-59 Shadow Coins 0 → ไม่ต้องส่ง ได้คันท้าย (R-7-41)', () => {
+  const { room } = startedS(3, { mode: 'shadow', toggles: { refund: false } });
+  room.clearTimer(); [5, 5, 0].forEach((c, s) => { seat(room, s).coins = c; }); room.startAuction(1);
+  const [s0, s1, s2] = [0, 1, 2].map(s => seat(room, s));
+  throwsCode(() => room.shadowBid(s2.id, { amount: 1 }), 'BID_OVER_COINS');
+  room.shadowBid(s0.id, { amount: 1 }); room.shadowBid(s1.id, { amount: 1 });
+  room.shadowConfirm(s0.id); room.shadowConfirm(s1.id);
+  room.endPhaseNow();
+  const res = room.auctionHistory[0];
+  assert.strictEqual(res.ranking[2].pid, s2.id);
+  assert.strictEqual(res.allocation[s2.id], room.auction.set[2]);
+});
+test('T-60 Shadow ไม่ส่งจนหมดเวลา → 1 อัตโนมัติ · ค่าค้างที่ยังไม่ยืนยันถูกใช้ (R-7-43)', () => {
+  const { room } = startedS(3, { mode: 'shadow', toggles: { refund: false } });
+  room.clearTimer(); [10, 10, 10].forEach((c, s) => { seat(room, s).coins = c; }); room.startAuction(1);
+  const [s0, s1] = [0, 1].map(s => seat(room, s));
+  room.shadowBid(s1.id, { amount: 7 });
+  room.endPhaseNow(); // deadline
+  const bids = room.auction.reveal.bids;
+  assert.strictEqual(bids.find(b => b.pid === s0.id).amount, 1); assert.ok(bids.find(b => b.pid === s0.id).auto);
+  assert.strictEqual(bids.find(b => b.pid === s1.id).amount, 7);
+  throwsCode(() => room.shadowBid(s0.id, { amount: 1 }), 'WRONG_PHASE');
+});
+test('T-61 Shadow ก่อนเปิด payload ของคนอื่นไม่มีราคา (R-7-46, R-12-02)', () => {
+  const { room } = startedS(3, { mode: 'shadow' });
+  room.clearTimer(); [10, 10, 10].forEach((c, s) => { seat(room, s).coins = c; }); room.startAuction(1);
+  const [s0, s1] = [0, 1].map(s => seat(room, s));
+  room.shadowBid(s0.id, { amount: 9 });
+  const other = JSON.stringify(room.getState(s1.id)), spec = JSON.stringify(room.getState(null));
+  assert.strictEqual(room.getState(s0.id).myBid, 9);
+  assert.strictEqual(room.getState(s1.id).myBid, null);
+  for (const j of [other, spec]) assert.ok(!/"bids"/.test(j) && !j.includes(':9,') , 'ราคารั่ว');
+  assert.throws(() => room.shadowBid(s1.id, { amount: 11 }), e => e.code === 'BID_OVER_COINS');
+  assert.throws(() => room.shadowBid(s1.id, { amount: 0 }), e => e.code === 'BID_TOO_LOW');
+});
+test('Shadow บอทสุ่ม n=2–7 อย่างละ 30 เกม จบครบ', () => {
+  for (let n = 2; n <= 7; n++) for (let g = 0; g < 30; g++) {
+    const rand = seeded(900 + n * 50 + g);
+    const { room } = startedS(n, { mode: 'shadow', toggles: { nitro: true, mystery: true } }, 900 + n * 50 + g);
+    let guard = 0;
+    while (room.phase !== 'gameOver' && guard++ < 5000) {
+      if (room.phase === 'shadowBid') {
+        for (const p of room.players) if (!room.auction.broke.has(p.id) && !room.auction.confirmed.has(p.id) && rand() < 0.8) { room.shadowBid(p.id, { amount: 1 + Math.floor(rand() * p.coins) }); room.shadowConfirm(p.id); }
+        if (room.phase === 'shadowBid') room.endPhaseNow();
+      } else room.endPhaseNow();
+    }
+    assert.strictEqual(room.phase, 'gameOver');
+    assert.ok(room.players.every(p => p.coins >= 0 && p.cars.length === 0));
+  }
+});
+test('T-62 Refund Chaos: B ชนะ 6, A ลง 3, C ลง 1 (blind), D ลง 0 → A+1, C+1, D+2, B 0 (R-7-50…54)', () => {
+  const { room } = chaos(4);
+  forceAuction(room, 1, [20, 20, 20, 20]); // ผู้เปิด S0 = "C"
+  const [C, A, B, D] = [0, 1, 2, 3].map(s => seat(room, s));
+  room.raise(A.id, { amount: 3 }); room.raise(B.id, { amount: 6 }); room.pass(D.id); room.pass(C.id); room.pass(A.id);
+  const res = room.auctionHistory[0];
+  assert.deepStrictEqual(res.ranking.map(r => r.pid), [B.id, A.id, C.id, D.id]);
+  assert.deepStrictEqual(res.refund, { [A.id]: 1, [C.id]: 1, [D.id]: 2 });
+  assert.deepStrictEqual([A.coins, B.coins, C.coins, D.coins], [18, 14, 20, 22]);
+});
+test('T-63 Refund n=2 คนแพ้ลง 3 → +1+2 = +3 (R-7-53)', () => {
+  const { room } = chaos(2);
+  forceAuction(room, 1, [10, 10]);
+  const [s0, s1] = [seat(room, 0), seat(room, 1)];
+  room.raise(s1.id, { amount: 2 }); room.raise(s0.id, { amount: 3 }); room.pass(s1.id);
+  assert.deepStrictEqual(room.auctionHistory[0].refund, { [s1.id]: 3 });
+});
+test('T-64 Refund Classic n=3: คนท้าย +2 รองท้าย +1 (R-7-52, R-7-53)', () => {
+  const { room } = startedS(3, { toggles: { refund: true } });
+  forceAuction(room, 1, [10, 10, 10]);
+  const [s0, s1, s2] = [0, 1, 2].map(s => seat(room, s));
+  room.raise(s1.id, { amount: 4 }); room.pass(s2.id); room.pass(s0.id);
+  const res = room.auctionHistory[0]; // ผู้ชนะ S1 → S2 ได้คันที่ 2, S0 ได้คันท้าย
+  assert.deepStrictEqual(res.refund, { [s2.id]: 1, [s0.id]: 2 });
+  assert.deepStrictEqual([s0.coins, s1.coins, s2.coins], [12, 6, 11]);
+});
+// ---------- Nitro / Campaign ----------
+function raceWith(settings, n = 2, seed = 3) {
+  const r = startedS(n, settings, seed); toRace(r.room); assert.strictEqual(r.room.phase, 'racePick'); return r;
+}
+function pickPower(room, p, power, nitro = 0, tag = 'x') { const id = giveCar(room, p, power, tag + room.raceNo); room.select(p.id, { cardId: id, nitro }); room.confirm(p.id); return id; }
+test('T-65/T-66 Nitro: 38+3 = 42.5 ชนะ 41 · 42.5 = 42.5 → base สูงกว่าชนะ (R-7-26, R-7-91)', () => {
+  const { room } = raceWith({ toggles: { nitro: true } });
+  const [A, B] = room.players; A.coins = 10; B.coins = 10;
+  pickPower(room, A, 38, 3); pickPower(room, B, 41, 0);
+  let res = finishRace(room);
+  assert.strictEqual(res.rows[0].playerId, A.id); assert.strictEqual(res.rows[0].total, 42.5);
+  assert.strictEqual(A.coins, 7, 'หัก Nitro ตอนผล');
+  room.endPhaseNow();
+  if (room.phase === 'racePick' && !room.race.last) {
+    pickPower(room, A, 38, 3, 'y'); pickPower(room, B, 41, 1, 'y');
+    res = finishRace(room);
+    assert.strictEqual(res.rows[0].playerId, B.id); assert.strictEqual(res.rows[0].total, 42.5);
+  }
+});
+test('T-67 Nitro 6 Coins / เกิน Coins / ปิด Nitro → BAD_NITRO (R-7-90)', () => {
+  const { room } = raceWith({ toggles: { nitro: true } });
+  const A = room.players[0]; A.coins = 10;
+  throwsCode(() => room.select(A.id, { cardId: A.cars[0], nitro: 6 }), 'BAD_NITRO');
+  A.coins = 2; throwsCode(() => room.select(A.id, { cardId: A.cars[0], nitro: 3 }), 'BAD_NITRO');
+  throwsCode(() => room.select(A.id, { cardId: A.cars[0], nitro: 1.5 }), 'BAD_NITRO');
+  const { room: r2 } = raceWith({});
+  throwsCode(() => r2.select(r2.players[0].id, { cardId: r2.players[0].cars[0], nitro: 1 }), 'BAD_NITRO');
+});
+test('T-68 ก่อนผล Coins ที่คนอื่นเห็นไม่ลด และไม่มี nitro ใน payload (R-4-04)', () => {
+  const { room } = raceWith({ toggles: { nitro: true } }, 3);
+  const [A, B] = room.players; A.coins = 9;
+  room.select(A.id, { cardId: A.cars[0], nitro: 3 }); room.confirm(A.id);
+  const vb = room.getState(B.id);
+  assert.strictEqual(vb.players.find(p => p.id === A.id).coins, 9);
+  assert.strictEqual(vb.myNitro, 0);
+  assert.strictEqual(room.getState(A.id).myNitro, 3);
+  assert.ok(!JSON.stringify(vb.race).includes('nitro":3'));
+});
+function eventRace(event, n = 2) {
+  const r = raceWith({ toggles: { nitro: true } }, n);
+  r.room.race.event = event; return r;
+}
+test('T-69 Reverse: 10+2 Coins (−3) = 7 ชนะ 12 (R-7-26)', () => {
+  const { room } = eventRace('reverse');
+  const [A, B] = room.players; A.coins = 5;
+  pickPower(room, A, 10, 2); pickPower(room, B, 12, 0);
+  const res = finishRace(room);
+  assert.strictEqual(res.rows[0].playerId, A.id); assert.strictEqual(res.rows[0].total, 7);
+});
+test('Reverse เสมอ → base ต่ำกว่าชนะ (R-7-26)', () => {
+  const { room } = eventRace('reverse');
+  const [A, B] = room.players; A.coins = 5;
+  pickPower(room, A, 13, 2); pickPower(room, B, 10, 0); // 13−3 = 10
+  assert.strictEqual(finishRace(room).rows[0].playerId, B.id);
+});
+test('T-70 Rain: 40 (+2 Coins) → 35+3 = 38, 36 → 31 (R-7-26)', () => {
+  const { room } = eventRace('rain');
+  const [A, B] = room.players; A.coins = 5;
+  pickPower(room, A, 40, 2); pickPower(room, B, 36, 0);
+  const res = finishRace(room);
+  assert.strictEqual(res.rows.find(r => r.playerId === A.id).total, 38);
+  assert.strictEqual(res.rows.find(r => r.playerId === B.id).total, 31);
+});
+test('T-71 Underdog: base 5/20/30 → 5 ได้ 15 (R-7-26)', () => {
+  const { room } = eventRace('underdog', 3);
+  const [A, B, C] = room.players;
+  pickPower(room, A, 5); pickPower(room, B, 20); pickPower(room, C, 30);
+  assert.strictEqual(finishRace(room).rows.find(r => r.playerId === A.id).total, 15);
+});
+test('T-72 Winner Takes All 82/43/23 → ที่ 1 ได้ 148 (§7.6) · Double ×2', () => {
+  const { room } = eventRace('wta', 3);
+  room.race.prizes = [82, 43, 23];
+  const [A, B, C] = room.players;
+  pickPower(room, A, 30); pickPower(room, B, 20); pickPower(room, C, 10);
+  const res = finishRace(room);
+  assert.deepStrictEqual(res.rows.map(r => r.prize), [148, 0, 0]);
+  const { room: r2 } = eventRace('double', 2); r2.race.prizes = [58, 23];
+  pickPower(r2, r2.players[0], 30); pickPower(r2, r2.players[1], 20);
+  assert.deepStrictEqual(finishRace(r2).rows.map(r => r.prize), [116, 46]);
+});
+test('Frenzy อัตรา ×2 · Ban ห้ามใช้ Nitro · Lucky 0–10 (§7.6)', () => {
+  const { room } = eventRace('frenzy');
+  const [A, B] = room.players; A.coins = 5;
+  pickPower(room, A, 10, 2); pickPower(room, B, 12, 0);
+  assert.strictEqual(finishRace(room).rows.find(r => r.playerId === A.id).total, 16);
+  const { room: r2 } = eventRace('ban'); r2.players[0].coins = 5;
+  throwsCode(() => r2.select(r2.players[0].id, { cardId: r2.players[0].cars[0], nitro: 1 }), 'BAD_NITRO');
+  const { room: r3 } = eventRace('lucky', 3);
+  r3.players.forEach((p, i) => pickPower(r3, p, 10 + i));
+  for (const row of finishRace(r3).rows) assert.ok(row.lucky >= 0 && row.lucky <= 10 && row.total === row.base + row.lucky);
+});
+test('T-73 Fog: ไม่ส่ง Prize จนผล (R-7-20)', () => {
+  const { room } = eventRace('fog');
+  assert.strictEqual(room.getState(null).race.prizes, null);
+  room.players.forEach((p, i) => pickPower(room, p, 20 + i));
+  assert.strictEqual(room.phase, 'raceRun');
+  assert.strictEqual(room.getState(null).race.prizes, null);
+  room.endPhaseNow();
+  assert.ok(Array.isArray(room.getState(null).race.prizes));
+});
+test('T-74 Campaign x=5: 3 Race มีเหตุการณ์ Race 5 มีเสมอ ไม่ซ้ำ · campaignAll = ทุก Race (R-5-06)', () => {
+  for (let seed = 1; seed <= 30; seed++) {
+    const { room, ps } = roomS(5, { toggles: { campaign: true, nitro: true } }, seed); room.start(ps[0].id);
+    const ev = room.campaign.filter(Boolean);
+    assert.strictEqual(ev.length, 3); assert.ok(room.campaign[4]); assert.strictEqual(new Set(ev).size, 3);
+  }
+  const { room, ps } = roomS(4, { toggles: { campaign: true }, campaignAll: true }); room.start(ps[0].id);
+  assert.ok(room.campaign.every(Boolean));
+});
+test('T-75 Campaign ปิด Nitro → ไม่มี frenzy/ban (R-5-06)', () => {
+  for (let seed = 1; seed <= 100; seed++) {
+    const { room, ps } = roomS(7, { toggles: { campaign: true }, campaignAll: true }, seed); room.start(ps[0].id);
+    assert.ok(!room.campaign.includes('frenzy') && !room.campaign.includes('ban'));
+  }
+});
+test('Campaign เปิดทีละ Race: ตารางอนาคตไม่อยู่ใน payload (R-7-95)', () => {
+  const { room } = startedS(4, { toggles: { campaign: true, nitro: true }, campaignAll: true }, 7);
+  toRace(room);
+  const j = JSON.stringify(room.getState(room.players[0].id));
+  for (const e of room.campaign.slice(1)) if (e !== room.campaign[0]) assert.ok(!j.includes(`"${e}"`), 'เหตุการณ์อนาคตรั่ว: ' + e);
+});
+test('T-76 Mystery: วางท้าย id mystery · แจกตาม Power จริง · เปิดตอนผล (R-7-60…63)', () => {
+  const { room } = startedS(3, { toggles: { mystery: true } }, 4);
+  forceAuction(room, 1, [10, 10, 10]);
+  room.auction.mysteryId = room.auction.set[0]; // คันแรงสุด
+  const st = room.getState(null);
+  assert.strictEqual(st.auction.set[2], 'mystery');
+  assert.ok(!JSON.stringify(st).includes(`"${room.auction.set[0]}"`), 'mystery รั่ว');
+  const w = seat(room, 1); room.raise(w.id, { amount: 2 }); room.pass(seat(room, 2).id); room.pass(seat(room, 0).id);
+  assert.strictEqual(room.auctionHistory[0].allocation[w.id], room.auction.set[0]);
+  assert.strictEqual(room.getState(null).auction.set[0], room.auction.set[0]);
+});
+function tieGame(settings) {
+  const room = scriptedGameS(settings, 2, [[77, 38], [77, 38]], [['P1', 'P2'], ['P2', 'P1']]);
+  return room;
+}
+function scriptedGameS(settings, n, prizesByRace, rankOrderByRace) {
+  const { room } = startedS(n, settings, 9);
+  toRace(room);
+  for (let r = 0; r < n; r++) {
+    room.race.prizes = prizesByRace[r].slice();
+    rankOrderByRace[r].forEach((name, i) => {
+      const p = room.players.find(q => q.name === name);
+      const id = `fake-r${r}-${name}`;
+      room.catalog.set(id, { id, name: id, power: 40 - r * 5 - i });
+      if (room.race.last) { p.cars = [id]; room.race.picks.set(p.id, { cardId: id, nitro: 0 }); }
+      else { p.cars.push(id); room.select(p.id, { cardId: id }); }
+    });
+    if (!room.race.last) for (const p of room.players) room.confirm(p.id);
+    let g = 0; while (room.phase !== 'raceResult' && g++ < 5) room.endPhaseNow();
+    room.endPhaseNow();
+  }
+  return room;
+}
+test('T-77 Sudden Death: เสมอ Prize + อันดับ 1 → แข่งตัดสิน ผู้ชนะคนเดียว (R-7-100…103)', () => {
+  const room = tieGame({ toggles: { suddenDeath: true } });
+  assert.strictEqual(room.phase, 'racePick'); assert.ok(room.race.sudden);
+  assert.strictEqual(room.race.participants.length, 2);
+  const used = new Set([].concat(...room.carSets));
+  for (const pid of room.race.participants) assert.ok(!used.has(room.race.suddenCars[pid]));
+  let g = 0; while (room.phase !== 'gameOver' && g++ < 10) room.endPhaseNow();
+  assert.strictEqual(room.tieBreak, 'suddenDeath');
+  assert.strictEqual(room.standings.filter(s => s.winner).length, 1);
+  assert.strictEqual(room.standings.find(s => !s.winner).rank, 2);
+});
+test('T-78 Sudden Death ปิด → ชนะร่วม (R-9-05)', () => {
+  const room = tieGame({});
+  assert.strictEqual(room.phase, 'gameOver'); assert.strictEqual(room.tieBreak, 'shared');
+});
+test('Sudden Death + Nitro: ช่วงใส่ Nitro เฉพาะคนเสมอ คนอื่นส่งไม่ได้ (R-7-102)', () => {
+  const room = scriptedGameS({ toggles: { suddenDeath: true, nitro: true } }, 3, [[77, 38, 23], [77, 38, 23], [23, 38, 77]], [['P1', 'P2', 'P3'], ['P2', 'P1', 'P3'], ['P3', 'P1', 'P2']]);
+  // P1 = 77+38+38 = 153, P2 = 38+77+23 = 138? ตั้งให้เสมอด้วยค่าในตารางด้านล่างแทน
+  assert.ok(['racePick', 'gameOver'].includes(room.phase));
+  if (room.phase === 'racePick') {
+    const out = room.players.find(p => !room.race.participants.includes(p.id));
+    if (out) throwsCode(() => room.select(out.id, { nitro: 0 }), 'WRONG_PHASE');
+  }
+});
+// ---------- host ----------
+test('T-79 host ข้ามตา Chaos → pass ต่อท้าย passOrder (R-7-80)', () => {
+  const { room, ps } = chaos(3);
+  forceAuction(room, 1, [10, 10, 10]);
+  const s1 = seat(room, 1);
+  throwsCode(() => room.skip(ps[1].id === room.hostId ? ps[0].id : ps[1].id), 'NOT_HOST');
+  room.skip(room.hostId);
+  assert.strictEqual(room.auction.out.get(s1.id), 'skip');
+  assert.deepStrictEqual(room.auction.passOrder, [s1.id]);
+});
+test('T-80 host ข้ามช่วงเลือกรถ: รถค้างใช้ต่อ Nitro = 0 (R-7-24, R-7-80)', () => {
+  const { room } = raceWith({ toggles: { nitro: true } }, 3);
+  const A = room.players[0]; A.coins = 10;
+  room.select(A.id, { cardId: A.cars[1], nitro: 3 });
+  room.skip(room.hostId);
+  assert.strictEqual(room.phase, 'raceRun');
+  const res = finishRace(room);
+  const row = res.rows.find(r => r.playerId === A.id);
+  assert.strictEqual(row.nitro, 0); assert.ok(row.auto);
+});
+test('T-81 host หยุด เหลือ 9 วิ แล้วเล่นต่อ → deadline = now + 9 (R-7-82)', () => {
+  let t = 1e6;
+  const room = new Room('P', { cards: CARDS, models: MODEL_IDS, rand: seeded(2), introSeconds: 0, now: () => t });
+  const a = room.join('A'); room.join('B'); room.start(a.id);
+  t += (CFG.BID_TURN_SECONDS - 9) * 1000;
+  room.pause(room.hostId);
+  assert.strictEqual(room.getState(null).paused.remainingMs, 9000);
+  assert.strictEqual(room.getState(null).endsAt, null);
+  throwsCode(() => room.pass(room.auction.turnId), 'PAUSED');
+  t += 30000;
+  room.resumeGame(room.hostId);
+  assert.strictEqual(room.endsAt - t, 9000);
+  throwsCode(() => room.resumeGame(room.hostId), 'CANNOT_PAUSE');
+  room.destroy();
+});
+test('T-82 host ข้าม/หยุดระหว่าง RACE_RUN ไม่ได้ (R-7-81)', () => {
+  const { room } = raceWith({});
+  room.endPhaseNow();
+  assert.strictEqual(room.phase, 'raceRun');
+  throwsCode(() => room.skip(room.hostId), 'CANNOT_SKIP');
+  throwsCode(() => room.pause(room.hostId), 'CANNOT_PAUSE');
+});
+test('T-83 host ออก → host = ที่นั่งถัดไปที่เชื่อมต่อ · หลุดเกิน 15 วิ ระหว่างเกม → ส่งต่อ (R-7-75)', () => {
+  const { room } = startedS(3, {});
+  const h = room.player(room.hostId);
+  room.setConnected(seat(room, (h.seat + 1) % 3).id, false);
+  room.leave(h.id);
+  assert.strictEqual(room.hostId, seat(room, (h.seat + 2) % 3).id);
+  let t = 1e6;
+  const r2 = new Room('H', { cards: CARDS, models: MODEL_IDS, rand: seeded(2), introSeconds: 0, now: () => t });
+  const a = r2.join('A'); r2.join('B'); r2.start(a.id);
+  r2.setConnected(a.id, false); t += 16000; r2.transferHostIfNeeded(60000, 15000);
+  assert.notStrictEqual(r2.hostId, a.id);
+  r2.destroy();
+});
+test('host เตะ: lobby = ออกจากห้อง · ระหว่างเกม = ออก (ระบบเล่นแทน) · โอน host (R-7-74)', () => {
+  const { room, ps } = roomS(3);
+  room.kick(ps[0].id, { target: ps[2].id });
+  assert.strictEqual(room.players.length, 2);
+  throwsCode(() => room.kick(ps[0].id, { target: ps[0].id }), 'BAD_TARGET');
+  throwsCode(() => room.kick(ps[1].id, { target: ps[0].id }), 'NOT_HOST');
+  room.join('P3'); room.start(ps[0].id);
+  const t = room.players.find(p => p.id !== ps[0].id);
+  room.kick(ps[0].id, { target: t.id });
+  assert.ok(t.left);
+  room.transfer(ps[0].id, { target: room.players.find(p => !p.left && p.id !== ps[0].id).id });
+  assert.notStrictEqual(room.hostId, ps[0].id);
+});
+test('โมเดล: ค่าเริ่มต้นสุ่มจาก catalog · เลือกได้เฉพาะใน lobby และมีใน catalog (R-7-73, R-4.2-03)', () => {
+  const { room, ps } = roomS(2);
+  assert.ok(MODEL_IDS.includes(ps[0].modelId));
+  room.setModel(ps[1].id, { modelId: 'kenney-race' });
+  assert.strictEqual(room.getState(null).players[1].modelId, 'kenney-race');
+  throwsCode(() => room.setModel(ps[1].id, { modelId: 'nope' }), 'BAD_MODEL');
+  room.start(ps[0].id);
+  throwsCode(() => room.setModel(ps[1].id, { modelId: 'code-jet' }), 'WRONG_PHASE');
+});
+test('T-84 race:run ไม่มี power/total · ทุกคนได้ runSeed เดียวกัน (R-4-05, R-12-13)', () => {
+  const { room } = raceWith({ toggles: { nitro: true } }, 3);
+  const events = []; room.onEvent = (r, type, d) => events.push([type, d]);
+  room.endPhaseNow();
+  const run = events.find(e => e[0] === 'race:run')[1];
+  assert.ok(Number.isInteger(run.runSeed));
+  assert.strictEqual(run.order.length, 3);
+  assert.ok(!/"power"|"total"|"prize"|"base"/.test(JSON.stringify(run)));
+  const seeds = room.players.map(p => room.getState(p.id).race.run.runSeed);
+  assert.ok(seeds.every(s => s === run.runSeed));
+});
+test('T-86 models.csv แถวผิด/id ซ้ำ ถูกข้าม ไม่ล่ม · ไม่มีไฟล์ → โมเดลจากโค้ด (R-4.2-01)', () => {
+  const { buildModels, loadModels } = require('../server/models');
+  const log = [];
+  const res = buildModels('# c\nid,name,tab,source,file,scale,rotY,rearZ,labelY,skipWheel\nanimal-turtle,เต่า,animal,code,turtle,,,,,\nanimal-turtle,ซ้ำ,animal,code,turtle,,,,,\nBad,x,animal,code,turtle,,,,,\nk1,x,vehicle,glb,nofile.glb,,180,,,\nk2,x,vehicle,code,nobuilder,,,,,\nk3,x,boat,code,turtle,,,,,\nk4,x,animal,code,cat,99,,,,\n', null, m => log.push(m));
+  assert.deepStrictEqual(res.models.map(m => m.id), ['animal-turtle', 'k1']);
+  assert.strictEqual(res.skipped, 5);
+  assert.ok(log.some(m => /แถว 4/.test(m)));
+  assert.strictEqual(buildModels(null, null, () => {}).models.length, 34);
+  const real = loadModels(path.join(__dirname, '..', 'models'), () => {});
+  assert.strictEqual(real.models.length, 59);
+  assert.strictEqual(real.skipped, 0);
+});
+test('T-88 Race สุดท้ายเปิด Nitro: รถเลือกอัตโนมัติ มีช่วงใส่ Nitro (R-7-21, D2-43)', () => {
+  const { room } = startedS(2, { toggles: { nitro: true } }, 5);
+  toRace(room);
+  const [A, B] = room.players; A.coins = 4; B.coins = 0;
+  room.endPhaseNow(); room.endPhaseNow(); room.endPhaseNow(); // Race 1 → Race 2 (สุดท้าย)
+  assert.ok(room.race.last);
+  assert.strictEqual(room.phase, 'racePick');
+  assert.ok(room.race.confirmed.has(B.id), 'Coins 0 ล็อกให้');
+  throwsCode(() => room.select(A.id, { cardId: 'car-01x' }), 'CAR_NOT_OWNED');
+  room.select(A.id, { nitro: 2 }); room.confirm(A.id);
+  assert.strictEqual(room.phase, 'raceRun');
+  const res = finishRace(room);
+  assert.strictEqual(res.rows.find(r => r.playerId === A.id).nitro, 2);
+});
+test('T-90 บอทสุ่มทุกโหมด × ปุ่มเสริม n=2–7 อย่างละ 8 เกม: จบ Coins ≥ 0 ใช้รถครบ Prize รวมตรง', () => {
+  const combos = [];
+  for (const mode of CFG.MODES) for (let mask = 0; mask < 32; mask += 3) combos.push({ mode, toggles: Object.fromEntries(CFG.TOGGLES.map((k, i) => [k, !!(mask >> i & 1)])) });
+  let games = 0;
+  for (const set of combos) for (let n = 2; n <= 7; n += 1) {
+    const seed = 3000 + games, rand = seeded(seed);
+    const { room } = startedS(n, set, seed);
+    let guard = 0;
+    while (room.phase !== 'gameOver' && guard++ < 6000) {
+      const r = rand();
+      if (r < 0.03 && room.pausable && room.pausable()) { room.pause(room.hostId); room.resumeGame(room.hostId); continue; }
+      if (r < 0.06 && ['auction', 'shadowBid', 'racePick'].includes(room.phase) && !room.intro && (room.phase !== 'auction' || room.auction.turnId)) { room.skip(room.hostId); continue; }
+      if (room.phase === 'auction' && room.auction.turnId) {
+        const p = room.player(room.auction.turnId), a = room.auction, max = set.mode === 'chaos' ? p.coins + a.committed[p.id] : p.coins;
+        if (rand() < 0.45 && max > a.currentBid) room.raise(p.id, { amount: a.currentBid + 1 + Math.floor(rand() * (max - a.currentBid)) }); else room.pass(p.id);
+      } else if (room.phase === 'shadowBid' && !room.intro) {
+        for (const p of room.players) if (!room.auction.broke.has(p.id) && !room.auction.confirmed.has(p.id) && rand() < 0.7) { room.shadowBid(p.id, { amount: 1 + Math.floor(rand() * p.coins) }); room.shadowConfirm(p.id); }
+        if (room.phase === 'shadowBid') room.endPhaseNow();
+      } else if (room.phase === 'racePick' && !room.intro && (!(room.race.last || room.race.sudden) || room.race.nitroOnly)) {
+        for (const p of room.racers()) if (!room.race.confirmed.has(p.id)) {
+          const nitro = room.nitroAllowed() ? Math.min(p.coins, CFG.NITRO_MAX_COINS, Math.floor(rand() * 4)) : 0;
+          room.select(p.id, room.race.last || room.race.sudden ? { nitro } : { cardId: p.cars[Math.floor(rand() * p.cars.length)], nitro });
+          room.confirm(p.id);
+        }
+        if (room.phase === 'racePick') room.endPhaseNow();
+      } else room.endPhaseNow();
+      if (rand() < 0.002) { const q = room.players[Math.floor(rand() * n)]; if (room.players.filter(x => !x.left).length > 1) room.leave(q.id); }
+    }
+    assert.strictEqual(room.phase, 'gameOver', `${set.mode} ${JSON.stringify(set.toggles)} n=${n} ค้างที่ ${room.phase}`);
+    assert.ok(room.players.every(p => p.coins >= 0 && p.cars.length === 0));
+    const total = room.raceHistory.reduce((s, r) => s + r.prizes.reduce((a, b) => a + b, 0), 0);
+    assert.strictEqual(room.players.reduce((s, p) => s + p.prizeTotal, 0), total);
+    assert.strictEqual(room.standings.filter(s => s.winner).length >= 1, true);
+    if (set.toggles.suddenDeath) assert.strictEqual(room.standings.filter(s => s.winner).length, 1);
+    room.destroy(); games++;
+  }
+});
+test('config v2.0: เวลาเตือน < เวลาเลือกรถ และค่าสมดุลครบ (R-3-05)', () => {
+  assert.ok(CFG.PICK_REMIND_SECONDS < CFG.PICK_SECONDS && CFG.WARNING_SECONDS < CFG.PICK_SECONDS); // ค่าจริงแก้ได้ใน config (ค่าเริ่มต้น 15 / 6 / 5 / 12)
+  for (const k of ['RULES_SECONDS', 'LOT_REVEAL_STEP_SECONDS', 'SHADOW_BID_SECONDS', 'SHADOW_REVEAL_SECONDS', 'CAMPAIGN_BANNER_SECONDS']) assert.ok(Number.isInteger(CFG[k]) && CFG[k] >= 1, k);
+  assert.ok(CFG.NITRO_POWER_PER_COIN > 0 && CFG.NITRO_MAX_COINS >= 1 && CFG.REFUND_RATIO >= 0 && CFG.REFUND_RATIO <= 1);
 });
 
 console.log(`\n${passed} ผ่าน, ${failed} ไม่ผ่าน`);

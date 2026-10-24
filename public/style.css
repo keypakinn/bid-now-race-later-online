@@ -229,3 +229,179 @@ table.sum .tot{color:var(--orange);font-size:13px;text-align:right}
 .owner.first .hib{font-family:'Orbitron',sans-serif;font-size:11px}
 .owner.out{opacity:.5}
 .owner.moved{box-shadow:0 0 0 2px var(--gold)}
+
+/* =====================================================================
+   v2.0 — โหมด, ปุ่มเสริม, หน้าแข่ง 3D, เมนู (spec v2.0 หัวข้อ 10)
+   ===================================================================== */
+.tright{gap:6px;flex-wrap:nowrap}
+.ib{min-width:40px;min-height:40px;padding:0 8px;border-radius:10px;background:var(--panel2);font-size:16px;line-height:1}
+.ib.sm{min-width:34px;min-height:34px;font-size:13px}
+.menu-b{font-size:22px;font-weight:700}
+.hostbtns{display:flex;gap:4px}
+button.sm{min-height:34px;padding:0 10px;font-size:13px}
+.pdot{display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--c);flex:none;box-shadow:0 0 0 2px rgba(255,255,255,.12)}
+.online{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);flex:none}
+.mthumb{width:34px;height:34px;border-radius:8px;background:var(--panel2);object-fit:cover;flex:none}
+.mname{font-weight:400}
+.confirm{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px;margin-top:8px}
+.tip{font-size:13px;color:var(--mute);border-left:3px solid var(--accent);padding:4px 10px;margin:8px 0;background:rgba(255,255,255,.03);border-radius:0 8px 8px 0}
+/* lobby: โมเดล */
+.mview-wrap{position:relative;background:radial-gradient(circle at 50% 70%,#253043,#141820);border-radius:14px;overflow:hidden}
+.mview{height:200px}
+.mv,.mv canvas{width:100%;height:100%;display:block;touch-action:pan-y}
+.mview-name{position:absolute;left:10px;bottom:8px;font-weight:600;text-shadow:0 1px 4px #000}
+.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:6px;max-height:260px;overflow-y:auto;padding:2px}
+.mcell{display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px;min-height:0;border:2px solid transparent;background:var(--panel2);font-size:11px;min-width:0}
+.mcell img,.mcell .mfb{width:100%;aspect-ratio:1;border-radius:8px;object-fit:cover;background:#1b222d;display:flex;align-items:center;justify-content:center;font-size:18px}
+.mcell span{max-width:100%}
+.mcell.on{border-color:var(--orange)}
+/* lobby: ตั้งค่า */
+.modes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.mode{display:flex;flex-direction:column;gap:4px;align-items:flex-start;text-align:left;padding:10px;min-height:0;border:2px solid var(--line);background:var(--panel2)}
+.mode b{font-size:14px}.mode span{font-size:11px;color:var(--mute);line-height:1.35}
+.mode.on{border-color:var(--orange);background:#2a1d10}
+.mode[disabled]{opacity:1;cursor:default}.mode[disabled]:not(.on){opacity:.55}
+@media (max-width:420px){.modes{grid-template-columns:1fr}}
+.toggles{display:flex;flex-direction:column;gap:8px}
+.tg{display:flex;gap:10px;align-items:flex-start}
+.sw{position:relative;width:48px;min-width:48px;height:28px;min-height:28px;padding:0;border-radius:999px;background:#3a3f48;flex:none;margin-top:2px}
+.sw i{position:absolute;left:3px;top:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:transform .15s}
+.sw.on{background:var(--green)}.sw.on i{transform:translateX(20px)}
+.sw.xs{width:38px;min-width:38px;height:22px;min-height:22px}.sw.xs i{width:16px;height:16px}.sw.xs.on i{transform:translateX(16px)}
+.sw[disabled]{opacity:.75;cursor:default}
+.sub{display:flex;gap:8px;align-items:center;margin-top:6px}
+/* ป้ายประกาศเพิ่ม */
+.rulechips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:420px}
+.evicon{font-size:64px;line-height:1}
+.k-lot{gap:16px}
+.lotbig{width:min(60vw,240px);animation:lotIn .45s cubic-bezier(.2,.8,.2,1)}
+@keyframes lotIn{from{transform:scale(1.4) rotateY(90deg);opacity:0}to{transform:none;opacity:1}}
+.lotrow{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;width:min(94vw,560px)}
+.lotslot{min-width:0}.lotslot.empty{aspect-ratio:2/3;border:1px dashed var(--line);border-radius:8px}
+/* ประมูล */
+.lotgrid .owner{font-size:12px}
+.price{display:flex;align-items:baseline;gap:10px;margin:10px 0 4px}
+.price b{font-family:'Orbitron',sans-serif;font-size:40px;color:var(--gold);line-height:1}
+.seats{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px;margin-top:8px}
+.seats.small{grid-template-columns:repeat(auto-fill,minmax(74px,1fr))}
+.seat{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px 6px;border-radius:12px;background:var(--panel2);border:1px solid var(--line);min-width:0;overflow:hidden}
+.seat:before{content:'';position:absolute;left:0;right:0;top:0;height:3px;background:var(--c)}
+.seat.turn{box-shadow:0 0 0 2px var(--c) inset}
+.seat.mine{background:#20262f}
+.av{position:relative;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--c);color:#111;font-weight:700;flex:none}
+.av.sm{width:22px;height:22px;font-size:11px}
+.av.ring:after{content:'';position:absolute;inset:-4px;border-radius:50%;background:conic-gradient(var(--c) calc(var(--f,1)*360deg),rgba(255,255,255,.12) 0);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px));mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px))}
+.snm{font-size:13px;font-weight:600;max-width:100%}
+.scoin{font-family:'Orbitron',sans-serif;font-size:11px;color:var(--yellow)}
+.samt{font-size:11px;color:var(--mute)}.samt b{color:var(--ink);font-family:'Orbitron',sans-serif;font-size:13px}
+.samt .ok{color:var(--green)}
+.pile{position:relative;width:30px;height:66px;margin:2px auto 0}
+.pile i{position:absolute;left:0;width:30px;height:8px;border-radius:50%;box-shadow:0 1px 0 rgba(0,0,0,.6),inset 0 -2px 0 rgba(0,0,0,.25)}
+.pile i.drop{animation:chipDrop .45s cubic-bezier(.3,.7,.4,1) both;animation-delay:var(--d)}
+@keyframes chipDrop{from{transform:translateY(-70px) rotate(180deg);opacity:0}to{transform:none;opacity:1}}
+.seat.out .pile,.seat.out .scars{opacity:.28}
+.seat.out .av,.seat.out .snm{opacity:.55}
+.stamp{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-14deg);font-family:'Orbitron',sans-serif;font-weight:900;font-size:22px;color:rgba(255,59,48,.55);border:3px solid rgba(255,59,48,.45);border-radius:8px;padding:0 6px;pointer-events:none}
+.seat.back .pile i{animation:chipBack .9s ease-in .4s both}
+@keyframes chipBack{to{transform:translateY(-90px);opacity:0}}
+.scars{display:flex;flex-wrap:wrap;gap:2px;justify-content:center;max-width:100%}
+.scars img{width:22px;height:18px;object-fit:cover;border-radius:3px}
+.quick{display:flex;gap:6px;flex-wrap:wrap}
+.quick button{flex:1;min-width:52px;font-family:'Orbitron',sans-serif;font-size:13px}
+.quick .allin{background:#5a1f12;color:#ffb39e}
+.hint{animation:hint 1.2s ease-in-out 3}
+@keyframes hint{50%{box-shadow:0 0 0 4px var(--gold)}}
+.sold{font-family:'Orbitron',sans-serif;font-weight:900;font-size:30px;color:var(--gold);text-align:center;animation:beat .8s ease-out}
+.refund{font-size:11px;color:var(--green);font-weight:600}
+.flipin{animation:lotIn .4s ease-out}
+.big{font-family:'Orbitron',sans-serif;font-size:24px;color:var(--gold)}
+/* ช่วงแข่ง: เลือกรถ */
+.evbadge{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:0 10px;border-radius:999px;background:#2d2410;color:var(--gold);border:1px solid var(--gold);font-size:13px;font-weight:600}
+.evbadge .ei{font-size:15px}
+.evrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0}
+.fogbox{background:#2a2f36;border-radius:12px;padding:14px;text-align:center;color:#c9d2dd;margin-bottom:6px}
+.ticket.pop .tk-v{animation:beat .7s ease-out}
+.nitro{margin-top:12px;background:#24130c;border:1px solid #6b3416;border-radius:14px;padding:10px}
+.nitro.rev{background:#1d1030;border-color:#5b3a8f}.nitro.frz{background:#0d1d2a;border-color:#2d7ea0;box-shadow:0 0 14px rgba(56,225,255,.25)}
+.nitro.ban{background:#2a1b1b;border-color:#5c2c2c}
+.nitro .nv{font-family:'Orbitron',sans-serif;font-size:20px;color:#ff9a3d}
+.flames{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;margin:8px 0}
+.flames button{min-width:0;padding:0;font-size:12px;background:#3a2112}
+.flames button.lit{background:linear-gradient(180deg,#ff9a3d,#c0391b);color:#fff}
+.flames button.on{outline:2px solid #fff}
+.waitrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.wchip{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:3px 8px 3px 3px;border-radius:999px;background:var(--panel2);border:1px solid var(--line)}
+.wchip.ok{border-color:var(--green)}
+.score .srow{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line)}
+.score .srow.mine{background:rgba(255,255,255,.04)}
+.score .rk{width:20px;text-align:center;font-family:'Orbitron',sans-serif;color:var(--mute)}
+.score .pt{font-family:'Orbitron',sans-serif;color:var(--gold);min-width:3ch;text-align:right}
+.crownb{color:var(--gold);font-size:15px;cursor:pointer}
+.streak{font-size:12px;color:#ff9a3d;font-weight:600}
+.evs{display:block;font-size:10px}
+/* หน้าแข่ง 3D */
+.runwrap{margin:8px -16px 0}
+.runhead{display:flex;align-items:center;justify-content:center;gap:10px;padding:4px 16px;flex-wrap:wrap}
+.runhost{position:relative;height:min(72vh,640px);min-height:360px}
+.r3d{position:absolute;inset:0;overflow:hidden;background:#0b0e14}
+.r3d-gl,.r3d-fx{position:absolute;inset:0;width:100%!important;height:100%!important;display:block}
+.r3d-fx{pointer-events:none}
+.r3d-labels{position:absolute;inset:0;pointer-events:none;z-index:2}
+.r3d-tag{position:absolute;left:0;top:0;display:flex;flex-direction:column;align-items:center;gap:2px;background:rgba(13,16,21,.82);border:2px solid var(--c);border-radius:10px;padding:3px;max-width:92px;font-size:12px;font-weight:600;white-space:nowrap;transition:max-width .3s}
+.r3d-tag img{width:84px;height:70px;object-fit:cover;border-radius:7px;display:block;transition:width .3s,height .3s}
+.r3d-tag.small img{width:48px;height:40px}
+.r3d-tag .rk{font-family:'Orbitron',sans-serif;background:var(--c);color:#0b0d11;border-radius:999px;padding:0 6px;font-size:11px}
+.r3d-tag .nm{max-width:84px;overflow:hidden;text-overflow:ellipsis}
+.r3d-tag .slot{font-family:'Orbitron',sans-serif;color:var(--gold)}.r3d-tag .slot.spin{animation:slot .12s linear infinite}
+@keyframes slot{0%{transform:translateY(-4px)}100%{transform:translateY(4px)}}
+.r3d-tag.done{opacity:.85}
+.r3d-cd{position:absolute;inset:0;z-index:3;display:flex;align-items:center;justify-content:center;font-family:'Orbitron',sans-serif;font-weight:900;font-size:min(34vw,170px);color:#fff;text-shadow:0 6px 30px rgba(0,0,0,.6);pointer-events:none}
+.r3d-cd:empty{display:none}
+.r3d-photo{position:absolute;left:50%;top:16%;transform:translateX(-50%);z-index:3;font-family:'Orbitron',sans-serif;font-weight:900;letter-spacing:.2em;font-size:clamp(20px,6vw,34px);color:var(--gold);text-shadow:0 2px 16px #000;white-space:nowrap}
+.r3d-flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:4}
+.r3d-flash.on{animation:flashA .5s ease-out}
+@keyframes flashA{from{opacity:.85}to{opacity:0}}
+.r3d-ticker{position:absolute;left:12px;right:12px;bottom:12px;z-index:3;display:flex;flex-direction:column;align-items:flex-start;gap:6px;pointer-events:none}
+.r3d-ticker .tk{background:rgba(13,16,21,.88);border-left:3px solid var(--c,#38e1ff);padding:6px 12px;border-radius:4px;font-size:14px;animation:tkIn .35s ease-out both;max-width:100%}
+.r3d-ticker .tk.out{animation:tkOut .4s ease-in both}
+@keyframes tkIn{from{transform:translateX(-24px);opacity:0}to{transform:none;opacity:1}}
+@keyframes tkOut{to{opacity:0;transform:translateY(6px)}}
+.nogl{padding:16px}
+/* แท่นรับรางวัล: การ์ดพลิก */
+.pod{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;align-items:end;margin-top:10px}
+.pslot{display:flex;flex-direction:column;gap:6px;min-width:0}
+.block{border-radius:6px 6px 0 0;display:grid;place-items:center;font-family:'Orbitron',sans-serif;font-weight:900;font-size:22px;color:#111}
+.b1{height:70px;background:linear-gradient(180deg,var(--gold),#b8902a)}.b2{height:48px;background:linear-gradient(180deg,var(--silver),#8c949c)}.b3{height:34px;background:linear-gradient(180deg,var(--bronze),#8f5c31)}
+.podrest{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+.pcard{perspective:800px;min-width:0}
+.pcard .in{position:relative;transition:transform .7s cubic-bezier(.2,.8,.2,1);transform-style:preserve-3d;min-height:212px}
+.podrest .pcard .in{min-height:112px}
+.pcard.on .in{transform:rotateY(180deg)}
+.pcard .back,.pcard .face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:10px;overflow:hidden}
+.pcard .back{background:repeating-linear-gradient(45deg,var(--panel2) 0 10px,var(--panel) 10px 20px);border:2px solid var(--line);display:grid;place-items:center;font-family:'Orbitron',sans-serif;color:var(--mute)}
+.pcard .face{transform:rotateY(180deg);background:var(--panel);border:2px solid var(--c);display:flex;flex-direction:column}
+.pcard .face img{width:100%;aspect-ratio:1088/912;object-fit:cover;display:block}
+.podrest .pcard .face{flex-direction:row}.podrest .pcard .face img{width:44%;height:100%;aspect-ratio:auto}
+.pcard .meta{padding:5px 7px;display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.pcard .who{font-weight:600;color:var(--c);font-size:13px}
+.pcard .car{font-size:11px;color:var(--mute)}
+.pcard .pw{font-family:'Orbitron',sans-serif;font-size:12px;display:flex;flex-wrap:wrap;gap:3px;align-items:center}
+.pcard .nit{color:#ff9a3d}.pcard .evd{color:#b9a7ff}
+.pcard .prize{font-family:'Orbitron',sans-serif;color:var(--gold);font-size:12px}
+.confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:40}
+/* ป้ายแจ้งเตือน / หยุดชั่วคราว */
+.turnbanner{position:fixed;left:50%;top:36%;transform:translate(-50%,-50%);z-index:35;pointer-events:none;background:var(--accent);color:var(--accentInk);font-weight:700;font-size:clamp(24px,8vw,42px);padding:14px 26px;border-radius:14px;box-shadow:0 10px 40px rgba(0,0,0,.5);white-space:nowrap;animation:tb 1.5s ease both}
+.turnbanner.pick{background:var(--pick);color:#06210f}
+@keyframes tb{0%{opacity:0;transform:translate(-50%,-50%) scale(.6)}15%{opacity:1;transform:translate(-50%,-50%) scale(1.06)}25%{transform:translate(-50%,-50%) scale(1)}80%{opacity:1}100%{opacity:0}}
+.pausebar{position:sticky;top:60px;z-index:6;background:#3a2a10;color:var(--yellow);border:1px solid var(--yellow);border-radius:12px;padding:10px 12px;margin:6px 0;font-weight:600;text-align:center}
+/* เมนู/หน้าต่าง */
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:50}
+.sheet{position:fixed;z-index:51;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px;max-height:86vh;overflow:auto}
+.sheet.menu{right:max(12px,env(safe-area-inset-right));top:max(12px,env(safe-area-inset-top));width:min(340px,calc(100vw - 24px))}
+.sheet.modal{left:50%;top:50%;transform:translate(-50%,-50%);width:min(620px,calc(100vw - 24px))}
+.vol{display:flex;flex-direction:column;gap:2px;font-size:13px}
+.vol input{min-height:28px;padding:0;accent-color:var(--orange)}
+.panel2{background:var(--panel2);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
+.rules{padding-left:18px;line-height:1.6}
+.mbody{overflow:auto}
+@media (prefers-reduced-motion:reduce){.pile i.drop,.seat.back .pile i,.lotbig,.flipin,.hint,.turnbanner,.sold{animation:none}.pcard .in{transition:none}}
